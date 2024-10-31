@@ -1,0 +1,27 @@
+plugins {
+    id 'java-library'
+}
+
+version = '1.0.0'
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging.showStandardStreams = true
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+    failFast = true
+    minHeapSize = '1024m' // initial heap size
+    maxHeapSize = '2048m' // maximum heap size
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(23)
+    }
+}

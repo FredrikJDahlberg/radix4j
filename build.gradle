@@ -1,0 +1,9 @@
+
+group = 'org.limitless'
+
+allprojects {
+    repositories {
+       mavenCentral()
+    }
+}
+
