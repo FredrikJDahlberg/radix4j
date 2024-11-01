@@ -1,3 +1,10 @@
 rootProject.name = 'radix4j'
 include 'radix4j'
-include 'radix4j-benchmarks'
+//include 'radix4j-benchmarks'
+
+//sourceControl {
+//    gitRepository ('https://github.com/FredrikJDahlberg/fsmp4j.git') {
+//        producesModule ('org.limitless:fsmp4j')
+//    }
+//}
+

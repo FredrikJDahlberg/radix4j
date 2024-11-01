@@ -3,7 +3,10 @@ group = 'org.limitless'
 
 allprojects {
     repositories {
-       mavenCentral()
+        mavenCentral()
+        mavenLocal()
+        flatDir {
+            dirs "libs"
+        }
     }
 }
-
