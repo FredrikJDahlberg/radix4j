@@ -49,9 +49,9 @@ public class Node extends BlockFlyweight {
         return (long) index * (long)this.encodedLength() + (long)offset;
     }
 
-    // ??
-    //public abstract int position(byte key);
-    //public abstract int block(int position);
+    public int position(byte key) {
+        return NOT_FOUND;
+    }
 
     @Override
     public int encodedLength() {
@@ -63,7 +63,7 @@ public class Node extends BlockFlyweight {
         return stringBuilder;
     }
 
-    public int mismatch(final int stringOffset, final int stringLength, final byte[] string) {
+    public int mismatch(final byte[] string, final int stringOffset, final int stringLength) {
         return 0;
     }
 }

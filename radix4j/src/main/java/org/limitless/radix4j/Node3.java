@@ -1,9 +1,6 @@
 package org.limitless.radix4j;
 
-import java.lang.foreign.MemorySegment;
-import java.util.Arrays;
-
-public class InnerNode extends Node {
+public class Node3 extends Node {
 
     protected static final int STRING_MAX_BYTES = 3;
     protected static final int KEY_COUNT = 3;
@@ -42,10 +39,10 @@ public class InnerNode extends Node {
     protected static final int STRING_LENGTH = STRING_LENGTH_BITS / Byte.SIZE;
     protected static final int BYTES = STRING_OFFSET + STRING_LENGTH;
 
-    public InnerNode() {
+    public Node3() {
     }
 
-    public InnerNode wrap(Node node) {
+    public Node3 wrap(Node node) {
         wrap(node.memorySegment(), node.segment(), node.index());
         return this;
     }
@@ -54,10 +51,11 @@ public class InnerNode extends Node {
         return (nativeByte(KEYS_OFFSET + position) & KEY_INCLUDED_MASK) != 0;
     }
 
-    public InnerNode completeKey(int position, int value) {
+    public Node3 completeKey(int position, boolean value) {
+        int included = value ? 1 : 0;
         int location = KEYS_OFFSET + position;
         nativeByte(location, (byte) ((nativeByte(KEYS_OFFSET + position) & ~KEY_INCLUDED_MASK) |
-            (value << KEY_INCLUDED_OFFSET_BITS)));
+            (included << KEY_INCLUDED_OFFSET_BITS)));
         return this;
     }
 
@@ -65,13 +63,14 @@ public class InnerNode extends Node {
         return (nativeByte(FLAGS_OFFSET) & STRING_INCLUDED_MASK) != 0;
     }
 
-    public InnerNode completeString(byte value) {
-        flags((byte) ((flags() & ~STRING_INCLUDED_MASK) | (value << STRING_COMPLETE_OFFSET_BITS)));
+    public Node3 completeString(boolean value) {
+        int included = value ? 1 : 0;
+        flags((byte) ((flags() & ~STRING_INCLUDED_MASK) | (included << STRING_COMPLETE_OFFSET_BITS)));
         return this;
     }
 
-    protected InnerNode string(byte[] string, int position, int stringLength) {
-        int length = Math.min(STRING_LENGTH, stringLength - position);
+    protected Node3 string(byte[] string, int position, int stringLength) {
+        int length = Math.min(STRING_LENGTH, stringLength);
         stringLength(length);
         if (length >= 1) {
             nativeByteArray(string, STRING_OFFSET, length);
@@ -87,7 +86,7 @@ public class InnerNode extends Node {
         return (flags() & STRING_LENGTH_MASK) >>> STRLEN_OFFSET_BITS;
     }
 
-    public InnerNode stringLength(int length) {
+    public Node3 stringLength(int length) {
         flags((byte) ((flags() & ~STRING_LENGTH_MASK) | ((length << STRLEN_OFFSET_BITS) & STRING_LENGTH_MASK)));
         return this;
     }
@@ -96,7 +95,7 @@ public class InnerNode extends Node {
         return ((flags() & KEY_COUNT_MASK) >>> KEY_COUNT_OFFSET_BITS);
     }
 
-    public InnerNode indexCount(int count) {
+    public Node3 indexCount(int count) {
         flags((byte) ((flags() & ~KEY_COUNT_MASK) | ((count << KEY_COUNT_OFFSET_BITS) & KEY_COUNT_MASK)));
         return this;
     }
@@ -105,7 +104,7 @@ public class InnerNode extends Node {
         return (byte) ((nativeByte(KEYS_OFFSET + position) & KEY_VALUE_MASK) >>> KEY_VALUE_OFFSET_BITS);
     }
 
-    public InnerNode key(int position, byte value) {
+    public Node3 key(int position, byte value) {
         nativeByte(KEYS_OFFSET + position, (byte) (value << KEY_VALUE_OFFSET_BITS));
         return this;
     }
@@ -116,7 +115,7 @@ public class InnerNode extends Node {
         return nativeByte(location) | (nativeByte(location + 1) << 8) | (nativeByte(location + 2) << 16);
     }
 
-    public InnerNode index(int position, byte key, int block) {
+    public Node3 index(int position, byte key, int block) {
         key(position, key);
         int location = position * INDEX_LENGTH + INDICES_OFFSET;
         nativeByte(location, (byte) block);
@@ -125,11 +124,11 @@ public class InnerNode extends Node {
         return this;
     }
 
+    @Override
     public int mismatch(final byte[] string, final int stringOffset, final int stringLength) {
         int nodeLength = stringLength();
         int remainingString = stringLength - stringOffset;
         int remaining = Math.min(remainingString, nodeLength);
-
         if (remaining < 1 || string[stringOffset] != nativeByte(STRING_OFFSET)) {
             return 0;
         }
@@ -139,27 +138,12 @@ public class InnerNode extends Node {
         if (remaining < 3 || string[stringOffset + 2] != nativeByte(STRING_OFFSET + 2)) {
             return 2;
         }
-        remainingString -= 3;
+        remainingString -= STRING_LENGTH;
+
         if (remainingString == 0 && completeString()) {
             return NOT_FOUND;
         }
         return 3;
-
-        /*
-        remainingString -= 3;
-        if (remainingString == 0) {
-            return completeString() ? -1 : 3;
-        }
-
-        int found = position(string[stringOffset + 3]);
-        if (found == NOT_FOUND) {
-            return 3;
-        }
-        if (completeKey(found) && remainingString == 1) {
-            return NOT_FOUND;
-        }
-        return 4;
-         */
     }
 
     /**
@@ -167,7 +151,7 @@ public class InnerNode extends Node {
      * @param key a key
      * @return position or not found
      */
-    //@Override
+    @Override
     public int position(byte key) {
         int count = indexCount();
         if (count == 0) {
@@ -196,7 +180,7 @@ public class InnerNode extends Node {
 
     public StringBuilder append(StringBuilder builder) {
         builder.setLength(0);
-        builder.append("{Node#").append(address()).append(", ");
+        builder.append("{Node#").append(index()).append(", ");
         int length = builder.length();
         if (completeString()) {
             builder.append('S');
@@ -232,5 +216,10 @@ public class InnerNode extends Node {
     @Override
     public String toString() {
         return append(new StringBuilder(128)).toString();
+    }
+
+    public static void clear(final Node3 node) {
+        node.nativeLong(0, 0);
+        node.nativeLong(Long.BYTES, 0);
     }
 }
