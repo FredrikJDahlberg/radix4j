@@ -1,5 +1,8 @@
 package org.limitless.radix4j;
 
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+
 public class Node3 extends Node {
 
     protected static final int STRING_MAX_BYTES = 3;
@@ -43,7 +46,7 @@ public class Node3 extends Node {
     }
 
     public Node3 wrap(Node node) {
-        wrap(node.memorySegment(), node.segment(), node.index());
+        wrap(node.memorySegment(), node.segment(), node.block());
         return this;
     }
 
@@ -73,12 +76,12 @@ public class Node3 extends Node {
         int length = Math.min(STRING_LENGTH, stringLength);
         stringLength(length);
         if (length >= 1) {
-            nativeByteArray(string, STRING_OFFSET, length);
+            nativeByteArray(position, string, STRING_OFFSET, length);
         }
         return this;
     }
 
-    protected void string(int stringPosition, int stringLength, byte[] string) {
+    protected void string(byte[] string) { //int stringPosition, int stringLength,
         nativeByteArray(STRING_OFFSET, STRING_LENGTH, string);
     }
 
@@ -106,6 +109,19 @@ public class Node3 extends Node {
 
     public Node3 key(int position, byte value) {
         nativeByte(KEYS_OFFSET + position, (byte) (value << KEY_VALUE_OFFSET_BITS));
+        return this;
+    }
+
+    public Node3 completeString(final byte[] bytes, final int position, final int length) {
+        completeString(true);
+        stringLength(length);
+        string(bytes, position, length);
+        return this;
+    }
+
+    public Node3 setIndex(final byte key, final int block) {
+        indexCount(1);
+        index(0, key, block);
         return this;
     }
 
@@ -180,7 +196,7 @@ public class Node3 extends Node {
 
     public StringBuilder append(StringBuilder builder) {
         builder.setLength(0);
-        builder.append("{Node#").append(index()).append(", ");
+        builder.append("{Node#").append(block()).append(", ");
         int length = builder.length();
         if (completeString()) {
             builder.append('S');

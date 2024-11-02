@@ -17,7 +17,7 @@ public class Node3Test {
     public void basics() {
         var node = pool.allocate().string("ABC".getBytes(), 0, 3);
         var child = pool.allocate().string("EFG".getBytes(), 0, 3).completeString(true);
-        node.indexCount(1).index(0, (byte) 'D', child.index());
+        node.indexCount(1).index(0, (byte) 'D', child.block());
 
         node.indexCount(3);
         node.completeKey(0, true);
@@ -34,8 +34,6 @@ public class Node3Test {
         System.out.println(work);
         work.wrap(node.memorySegment(), node.segment(), node.block(0));
         System.out.println(work);
-
-
     }
 
     @Test

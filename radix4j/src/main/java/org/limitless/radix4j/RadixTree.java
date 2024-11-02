@@ -21,6 +21,7 @@ public class RadixTree {
     private final Node3 child;
 
     private int size;
+    private int allocated;
 
     public RadixTree() {
         pool = new BlockPool.Builder<>(Arena.ofShared(), Node3.class).blocksPerSegment(256).build();
@@ -28,11 +29,13 @@ public class RadixTree {
         node = pool.allocate();
         context = new NodeContext();
         context.found = pool.allocate();
+        allocated += 3;
     }
 
     public boolean add(String string) {
         if (root == null) {
-            root = pool.allocate();
+            root = pool.allocate().completeString(false);
+            ++allocated;
         }
         context.found.wrap(root);
 
@@ -76,12 +79,13 @@ public class RadixTree {
     public void forEach(Consumer<Node3> consumer) {
         node.wrap(root);
 
-        indices[0] = node.index();
+        indices[0] = node.block();
         int remaining = 1;
         while (remaining >= 1) {
             if (indices[--remaining] != 0) {
                 node.wrap(node.memorySegment(), node.segment(), indices[remaining]);
                 consumer.accept(node);
+
                 int count = node.indexCount();
                 if (count >= 1) {
                     indices[remaining] = node.block(0);
@@ -99,59 +103,74 @@ public class RadixTree {
         }
     }
 
+    @Override
+    public String toString() {
+        return "RadixTree{ size = " + size + ", blocks = " + allocated + " }";
+    }
+
     private void addNode(final int offset, final int length, final byte[] string, NodeContext context) {
-        int remaining = length - context.mismatch;
+        int remaining = length;
         int position = offset;
-        Node3 found = context.found;
+
         if (context.mismatch >= 1) {
-            int count = found.indexCount();
+            // FIXME: split string
+            int count = context.found.indexCount();
             if (count < Node3.KEY_COUNT) {
-                found
+                context.found
                     .indexCount(count + 1)
                     .index(count, string[position], 0)
                     .completeKey(count, true);
             } else {
-                pool.allocate(child);
+                pool.allocate(child).completeString(false);
+                ++allocated;
 
-                final byte key = found.key(2);
-                final int index = found.block(2);
-                final boolean complete = found.completeKey(2);
-                found
-                    .index(2, (byte) Node.EMPTY_KEY, child.index())
+                final byte key = context.found.key(2);
+                final int index = context.found.block(2);
+                final boolean complete = context.found.completeKey(2);
+                context.found
+                    .index(2, (byte) Node.EMPTY_KEY, child.block())
                     .completeKey(2, false);
                 child
                     .completeString(false)
                     .indexCount(2)
                     .index(0, key, index).completeKey(0, complete)
                     .index(1, string[position], 0).completeKey(1, true);
-                found.wrap(child);
+                context.found.wrap(child);
             }
             --remaining;
             ++position;
         }
         while (remaining >= Node3.STRING_LENGTH + 1) {
-            found
+            context.found
                 .stringLength(Node3.STRING_LENGTH)
                 .string(string, position, Node3.STRING_LENGTH);
             remaining -= Node3.STRING_LENGTH;
             position += Node3.STRING_LENGTH;
-            pool.allocate(child);
-            found
-                .indexCount(1)
-                .index(0, string[position], child.index());
-            found.wrap(child);
+
+            int block = 0;
+            if (remaining >= 2) {
+                block = pool.allocate(child).block();
+                ++allocated;
+            }
+            context.found.setIndex(string[position], block);
+            if (remaining >= 2) {
+                context.found.wrap(child).completeString(false);
+            }
             --remaining;
             ++position;
         }
         if (remaining == Node3.STRING_LENGTH) {
-            found
-                .stringLength(remaining)
-                .string(string, position, remaining);
+            context.found.completeString(string, position, remaining);
             remaining -= Node3.STRING_LENGTH;
-            position += Node3.STRING_LENGTH;
+            position -= Node3.STRING_LENGTH;
+        }
+        if (remaining == 2) {
+            context.found.setIndex(string[position], 0).completeKey(0, true);
+            --remaining;
+            ++position;
         }
         if (remaining == 1) {
-            found.index(0, string[position], 0).completeKey(0, true);
+            context.found.completeString(string, position, remaining);
         }
     }
 
@@ -166,11 +185,10 @@ public class RadixTree {
         int remaining = length;
         context.mismatch = 0;
         context.index = 0;
-        final Node3 node = context.found;
         while (remaining >= 1) {
-            int stringLength = node.stringLength();
+            int stringLength = context.found.stringLength();
             if (stringLength >= 1) {
-                context.mismatch = node.mismatch(string, context.index, remaining);
+                context.mismatch = context.found.mismatch(string, context.index, remaining);
                 if (context.mismatch != -1 && context.mismatch != Node3.STRING_LENGTH) {
                     context.index += context.mismatch;
                     return true;
@@ -178,22 +196,22 @@ public class RadixTree {
                 remaining -= stringLength;
                 context.index += stringLength;
                 if (remaining == 0) {
-                    return !node.completeString();
+                    return !context.found.completeString();
                 }
             }
 
-            final int found = node.position(string[context.index]);  // mismatch
+            final int found = context.found.position(string[context.index]);  // mismatch
             if (found == Node3.NOT_FOUND) {
                 return true;
             }
-            if (node.key(found) != Node3.EMPTY_KEY) {
-                if (remaining == 1 && node.completeKey(found)) {
+            if (context.found.key(found) != Node3.EMPTY_KEY) {
+                if (remaining == 1 && context.found.completeKey(found)) {
                     return false;
                 }
                 ++context.index;
                 --remaining;
             }
-            node.wrap(node.memorySegment(), node.segment(), node.block(found));
+            context.found.wrap(context.found.memorySegment(), context.found.segment(), context.found.block(found));
         }
         return true;
     }
