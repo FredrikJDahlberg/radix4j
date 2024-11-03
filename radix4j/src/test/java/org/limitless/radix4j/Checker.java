@@ -7,16 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class Checker {
 
-    private RadixTree tree;
     private Consumer<Node3>[] checkers;
     private Consumer<RadixTree> action;
     private int position;
 
-    public Checker() {
-    }
-
-    public void check(final RadixTree tree, final Consumer<Node3>... checkers) {
-        this.tree = tree;
+    @SafeVarargs
+    public final void check(final RadixTree tree, final Consumer<Node3>... checkers) {
         this.checkers = checkers;
         position = 0;
         tree.forEach(this::test);

@@ -19,7 +19,6 @@ public class RadixTree {
 
     private final int[] indices = new int[16];
     private int size;
-    private int allocated;
 
     public RadixTree() {
         pool = new BlockPool.Builder<>(Arena.ofShared(), Node3.class).blocksPerSegment(256).build();
@@ -27,13 +26,11 @@ public class RadixTree {
         child = pool.allocate();
         context = new NodeContext();
         context.found = pool.allocate();
-        allocated += 3;
     }
 
     public boolean add(String string) {
         if (root == null) {
             root = pool.allocate().completeString(false);
-            ++allocated;
         }
         context.found.wrap(root);
 
@@ -106,7 +103,7 @@ public class RadixTree {
 
     @Override
     public String toString() {
-        return "RadixTree{ size = " + size + ", blocks = " + allocated + " }";
+        return "RadixTree{ size = " + size + ", bytes = " + pool.allocatedBytes() + " }";
     }
 
     private void addNode(final int offset, final int length, final byte[] string, NodeContext context) {
@@ -118,7 +115,6 @@ public class RadixTree {
             if (context.mismatch < Node3.STRING_LENGTH) {
                 final int stringLength = context.found.stringLength() - context.mismatch;
                 final int block = processString ? pool.allocate(child).block() : 0;
-                ++allocated;
                 context.found
                     .keyCount(2)
                     .completeString(false)
@@ -137,7 +133,6 @@ public class RadixTree {
                 final int count = context.found.keyCount();
                 if (count < Node3.KEY_COUNT) {
                     final int block = processString ? pool.allocate(child).block() : 0;
-                    ++allocated;
                     context.found
                         .keyCount(count + 1)
                         .index(count, string[position], block)
@@ -150,7 +145,6 @@ public class RadixTree {
                     final int index = context.found.child(2);
                     final boolean complete = context.found.completeKey(2);
                     pool.allocate(child).completeString(false);
-                    ++allocated;
                     context.found
                         .index(2, (byte) Node.EMPTY_KEY, child.block())
                         .completeKey(2, false);
@@ -182,7 +176,6 @@ public class RadixTree {
             } else {
                 if (remaining >= 2) {
                     final int block = pool.allocate(child).block();
-                    ++allocated;
                     found.setIndex(string[position], block);
                     found.wrap(child).completeString(false);
                 } else {

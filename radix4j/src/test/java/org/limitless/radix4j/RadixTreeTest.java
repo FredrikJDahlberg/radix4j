@@ -6,15 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class RadixTreeTest {
 
-    private String getString(Node3 node) {
-        int length = node.stringLength();
-        byte[] bytes = new byte[length];
-        node.string(bytes);
-        return new String(bytes, 0, length);
-    }
-
     @Test
-    public void emptyKey() {
+    public void fourStringsWithSamePrefix() {
         RadixTree tree = new RadixTree();
         assertTrue(tree.add("ABC"));
         assertFalse(tree.add("ABC"));
@@ -58,7 +51,6 @@ public class RadixTreeTest {
                 assertTrue(node.completeKey(1));
             });
         tree.forEach(System.out::println);
-        System.out.println(tree);
     }
 
     @Test
@@ -67,7 +59,6 @@ public class RadixTreeTest {
         assertTrue(tree.add("ABC"));
         assertTrue(tree.add("ABD"));
         tree.forEach(System.out::println);
-        System.out.println(tree);
         new Checker().check(tree,
             node -> {
                 assertEquals("AB", getString(node), "string");
@@ -86,7 +77,6 @@ public class RadixTreeTest {
         assertTrue(tree.add("ABCD"));
         assertTrue(tree.add("ABCE"));
         tree.forEach(System.out::println);
-        System.out.println(tree);
         new Checker().check(tree,
             node -> {
                 assertEquals("ABC", getString(node), "string");
@@ -105,7 +95,6 @@ public class RadixTreeTest {
         assertTrue(tree.add("ABCDF"));
         assertTrue(tree.add("ABCEG"));
         tree.forEach(System.out::println);
-        System.out.println(tree);
         new Checker().check(tree,
             node -> {
                 assertEquals("ABC", getString(node), "string");
@@ -146,7 +135,6 @@ public class RadixTreeTest {
                 assertEquals('2', node.key(0));
             }
         );
-        System.out.println(tree);
     }
 
     @Test
@@ -154,7 +142,6 @@ public class RadixTreeTest {
         RadixTree tree = new RadixTree();
         assertTrue(tree.add("1234567890123"));
         tree.forEach(System.out::println);
-        System.out.println(tree);
         new Checker().check(tree,
             node -> {
                 assertEquals("123", getString(node));
@@ -183,5 +170,12 @@ public class RadixTreeTest {
                 assertTrue(node.completeString());
             }
         );
+    }
+
+    private String getString(Node3 node) {
+        int length = node.stringLength();
+        byte[] bytes = new byte[length];
+        node.string(bytes);
+        return new String(bytes, 0, length);
     }
 }
