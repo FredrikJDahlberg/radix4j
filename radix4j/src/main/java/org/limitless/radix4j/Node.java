@@ -44,7 +44,6 @@ public class Node extends BlockFlyweight {
         return this;
     }
 
-    // FIXME: change in block flyweight
     private long fieldOffset(int offset, int index) {
         return (long) index * (long)this.encodedLength() + (long)offset;
     }

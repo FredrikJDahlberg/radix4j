@@ -1,7 +1,6 @@
 package org.limitless.radix4j;
 
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 
 public class Node3 extends Node {
 
@@ -72,6 +71,13 @@ public class Node3 extends Node {
         return this;
     }
 
+    protected Node3 string(final Node3 srcNode, final int position, int length) {
+        stringLength(length);
+        MemorySegment.copy(srcNode.memorySegment(), srcNode.fieldOffset(STRING_OFFSET) + position,
+            this.memorySegment(), this.fieldOffset(STRING_OFFSET), length);
+        return this;
+    }
+
     protected Node3 string(byte[] string, int position, int stringLength) {
         int length = Math.min(STRING_LENGTH, stringLength);
         stringLength(length);
@@ -81,8 +87,8 @@ public class Node3 extends Node {
         return this;
     }
 
-    protected void string(byte[] string) { //int stringPosition, int stringLength,
-        nativeByteArray(STRING_OFFSET, STRING_LENGTH, string);
+    protected void string(byte[] string) {
+        nativeByteArray(STRING_OFFSET, stringLength(), string);
     }
 
     public int stringLength() {
@@ -94,11 +100,11 @@ public class Node3 extends Node {
         return this;
     }
 
-    public int indexCount() {
+    public int keyCount() {
         return ((flags() & KEY_COUNT_MASK) >>> KEY_COUNT_OFFSET_BITS);
     }
 
-    public Node3 indexCount(int count) {
+    public Node3 keyCount(int count) {
         flags((byte) ((flags() & ~KEY_COUNT_MASK) | ((count << KEY_COUNT_OFFSET_BITS) & KEY_COUNT_MASK)));
         return this;
     }
@@ -120,15 +126,18 @@ public class Node3 extends Node {
     }
 
     public Node3 setIndex(final byte key, final int block) {
-        indexCount(1);
+        keyCount(1);
         index(0, key, block);
         return this;
     }
 
-    // @Override
-    public int block(int position) {
+    public int child(int position) {
         int location = position * INDEX_LENGTH + INDICES_OFFSET;
         return nativeByte(location) | (nativeByte(location + 1) << 8) | (nativeByte(location + 2) << 16);
+    }
+
+    public byte getStringByte(int position) {
+        return nativeByte(Node3.STRING_OFFSET + position);
     }
 
     public Node3 index(int position, byte key, int block) {
@@ -169,7 +178,7 @@ public class Node3 extends Node {
      */
     @Override
     public int position(byte key) {
-        int count = indexCount();
+        int count = keyCount();
         if (count == 0) {
             return NOT_FOUND;
         }
@@ -201,7 +210,7 @@ public class Node3 extends Node {
         if (completeString()) {
             builder.append('S');
         }
-        int count = indexCount();
+        int count = keyCount();
         for (int i = 0; i < count; ++i) {
             if (completeKey(i)) {
                 builder.append(i + 1);
@@ -221,7 +230,7 @@ public class Node3 extends Node {
         if (count >= 1) {
             builder.append("[");
             for (int i = 0; i < count; ++i) {
-                builder.append((char) key(i)).append('=').append(block(i)).append(',');
+                builder.append((char) key(i)).append('=').append(child(i)).append(',');
             }
             builder.append("]");
         }

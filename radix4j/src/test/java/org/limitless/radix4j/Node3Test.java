@@ -7,7 +7,6 @@ import java.lang.foreign.Arena;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.limitless.radix4j.Node.INCLUDED;
 
 public class Node3Test {
 
@@ -17,9 +16,9 @@ public class Node3Test {
     public void basics() {
         var node = pool.allocate().string("ABC".getBytes(), 0, 3);
         var child = pool.allocate().string("EFG".getBytes(), 0, 3).completeString(true);
-        node.indexCount(1).index(0, (byte) 'D', child.block());
+        node.keyCount(1).index(0, (byte) 'D', child.block());
 
-        node.indexCount(3);
+        node.keyCount(3);
         node.completeKey(0, true);
         assertTrue(node.completeKey(0));
 
@@ -32,7 +31,7 @@ public class Node3Test {
 
         var work = new Node3().wrap(node);
         System.out.println(work);
-        work.wrap(node.memorySegment(), node.segment(), node.block(0));
+        work.wrap(node.memorySegment(), node.segment(), node.child(0));
         System.out.println(work);
     }
 
@@ -47,7 +46,7 @@ public class Node3Test {
         node.completeString(true);
         assertEquals(-1, node.mismatch("ABC".getBytes(), 0, 3));
 
-        node.indexCount(1).index(0, (byte) 'D', 1);
+        node.keyCount(1).index(0, (byte) 'D', 1);
         assertEquals(0, node.mismatch("_BCD".getBytes(), 0, 4));
         assertEquals(1, node.mismatch("A_CD".getBytes(), 0, 4));
         assertEquals(2, node.mismatch("AB_D".getBytes(), 0, 4));
