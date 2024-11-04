@@ -206,6 +206,52 @@ public class RadixTreeTest {
         );
     }
 
+    @Test
+    public void moreLongStrings() {
+        RadixTree tree = new RadixTree();
+        assertTrue(tree.add("1234567890-0"));
+        assertTrue(tree.add("1234567890-1"));
+        assertTrue(tree.add("1234567890-2"));
+        assertTrue(tree.add("1234567890-3"));
+        tree.forEach(System.out::println);
+        new Checker().check(tree,
+            node -> {
+                assertEquals("123", getString(node));
+                assertEquals('4', node.key(0));
+                assertFalse(node.completeKey(0));
+                assertFalse(node.completeString());
+                assertEquals(1, node.keyCount());
+            },
+            node -> {
+                assertEquals("567", getString(node));
+                assertEquals('8', node.key(0));
+                assertFalse(node.completeKey(0));
+                assertFalse(node.completeString());
+                assertEquals(1, node.keyCount());
+            },
+            node -> {
+                assertEquals("90-", getString(node));
+                assertFalse(node.completeString());
+                assertEquals(3, node.keyCount());
+                assertEquals('0', node.key(0));
+                assertTrue(node.completeKey(0));
+                assertEquals('1', node.key(1));
+                assertTrue(node.completeKey(1));
+                assertEquals(Node3.EMPTY_KEY, node.key(2));
+                assertFalse(node.completeKey(2));
+            },
+            node -> {
+                assertEquals(0, node.stringLength());
+                assertFalse(node.completeString());
+                assertEquals(2, node.keyCount());
+                assertEquals('2', node.key(0));
+                assertTrue(node.completeKey(0));
+                assertEquals('3', node.key(1));
+                assertTrue(node.completeKey(1));
+            }
+        );
+    }
+
     private String getString(Node3 node) {
         int length = node.stringLength();
         byte[] bytes = new byte[length];
