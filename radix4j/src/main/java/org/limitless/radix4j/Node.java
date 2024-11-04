@@ -2,8 +2,6 @@ package org.limitless.radix4j;
 
 import org.limitless.fsmp4j.BlockFlyweight;
 
-import java.lang.foreign.MemorySegment;
-
 public class Node extends BlockFlyweight {
 
     protected static final byte INCLUDED = 1;

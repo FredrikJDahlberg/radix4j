@@ -1,6 +1,7 @@
 package org.limitless.radix4j;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 public class Node3 extends Node {
 
@@ -49,6 +50,12 @@ public class Node3 extends Node {
         return this;
     }
 
+    public Node3 copy(final Node3 srcNode) {
+        MemorySegment.copy(srcNode.memorySegment(), srcNode.fieldOffset(0),
+            this.memorySegment(), this.fieldOffset(0), BYTES);
+        return this;
+    }
+
     public boolean completeKey(int position) {
         return (nativeByte(KEYS_OFFSET + position) & KEY_INCLUDED_MASK) != 0;
     }
@@ -68,6 +75,16 @@ public class Node3 extends Node {
     public Node3 completeString(boolean value) {
         int included = value ? 1 : 0;
         flags((byte) ((flags() & ~STRING_INCLUDED_MASK) | (included << STRING_COMPLETE_OFFSET_BITS)));
+        return this;
+    }
+
+    protected Node3 shiftStringLeft(final int position, final int length) {
+        if (length >= 1) {
+            long stringOffset = fieldOffset(STRING_OFFSET);
+            MemorySegment.copy(memorySegment(), stringOffset + position,
+                memorySegment(), stringOffset, length);
+        }
+        stringLength(length);
         return this;
     }
 
@@ -151,24 +168,28 @@ public class Node3 extends Node {
 
     @Override
     public int mismatch(final byte[] string, final int stringOffset, final int stringLength) {
-        int nodeLength = stringLength();
-        int remainingString = stringLength - stringOffset;
+        final int nodeLength = stringLength();
+        final int remainingString = stringLength - stringOffset;
         int remaining = Math.min(remainingString, nodeLength);
-        if (remaining < 1 || string[stringOffset] != nativeByte(STRING_OFFSET)) {
+        if (remaining >= 1 && string[stringOffset] != nativeByte(STRING_OFFSET)) {
             return 0;
         }
-        if (remaining < 2 || string[stringOffset + 1] != nativeByte(STRING_OFFSET + 1)) {
+        if (remaining >= 2 && string[stringOffset + 1] != nativeByte(STRING_OFFSET + 1)) {
             return 1;
         }
-        if (remaining < 3 || string[stringOffset + 2] != nativeByte(STRING_OFFSET + 2)) {
+        if (remaining >= 3 && string[stringOffset + 2] != nativeByte(STRING_OFFSET + 2)) {
             return 2;
         }
-        remainingString -= STRING_LENGTH;
-
-        if (remainingString == 0 && completeString()) {
-            return NOT_FOUND;
+        if (nodeLength == remainingString && completeString()) {
+            return -1;
         }
-        return 3;
+        if (nodeLength + 1 == remainingString) {
+            int pos = position(string[stringOffset + nodeLength - 1]);
+            if (pos != NOT_FOUND && completeKey(pos)) {
+                return -1;
+            }
+        }
+        return nodeLength;
     }
 
     /**

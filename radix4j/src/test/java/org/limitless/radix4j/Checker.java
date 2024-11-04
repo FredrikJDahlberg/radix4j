@@ -16,7 +16,7 @@ public class Checker {
         this.checkers = checkers;
         position = 0;
         tree.forEach(this::test);
-        assertEquals(position, checkers.length, "more nodes expected");
+        assertEquals(checkers.length, position, "more nodes expected");
     }
 
     private void test(final Node3 node) {

@@ -7,64 +7,98 @@ import static org.junit.jupiter.api.Assertions.*;
 public class RadixTreeTest {
 
     @Test
-    public void fourStringsWithSamePrefix() {
+    public void insertEmptyNode() {
         RadixTree tree = new RadixTree();
-        assertTrue(tree.add("ABC"));
-        assertFalse(tree.add("ABC"));
-        assertTrue(tree.contains("ABC"));
-        assertEquals(1, tree.size());
+        assertTrue(tree.add("car"));
+        assertTrue(tree.add("pig"));
+        tree.forEach(System.out::println);
+        assertTrue(tree.contains("car"));
+        assertTrue(tree.contains("pig"));
+    }
 
-        assertTrue(tree.add("ABCD"));
-        assertFalse(tree.add("ABCD"));
-        assertTrue(tree.contains("ABCD"));
-        assertEquals(2, tree.size());
+    @Test
+    public void containsString2() {
+        RadixTree tree = new RadixTree();
+        assertTrue(tree.add("on"));
+        assertTrue(tree.add("one"));
+        tree.forEach(System.out::println);
+        assertTrue(tree.contains("one"));
+    }
 
-        assertTrue(tree.add("ABCE"));
-        assertFalse(tree.add("ABCE"));
-        assertTrue(tree.contains("ABCE"));
-        assertEquals(3, tree.size());
+    @Test
+    public void containsString3() {
+        RadixTree tree = new RadixTree();
+        assertTrue(tree.add("cat"));
+        assertTrue(tree.add("cats"));
+        tree.forEach(System.out::println);
+        assertTrue(tree.contains("cats"));
+    }
 
-        assertTrue(tree.add("ABCF"));
-        assertFalse(tree.add("ABCF"));
-        assertTrue(tree.contains("ABCF"));
-        assertEquals(4, tree.size());
-
-        assertTrue(tree.add("ABCG"));
-        assertFalse(tree.add("ABCG"));
-        assertTrue(tree.contains("ABCG"));
-        assertEquals(5, tree.size());
+    @Test
+    public void basics() {
+        RadixTree tree = new RadixTree();
+        assertTrue(tree.add("cat"));
+        assertTrue(tree.add("cats"));
+        assertTrue(tree.add("cow"));
+        assertTrue(tree.add("pig"));
+        assertTrue(tree.add("pin"));
+        tree.forEach(System.out::println);
         new Checker().check(tree,
             node -> {
-                assertEquals("ABC", getString(node));
-                assertEquals('D', node.key(0));
+                assertEquals(0, node.stringLength());
+                assertEquals(2, node.keyCount());
+                assertEquals('c', (char) node.key(0));
+                assertEquals('p', (char) node.key(1));
+            },
+            node -> {
+                assertEquals("i", getString(node));
+                assertFalse(node.completeString());
+                assertEquals(2, node.keyCount());
+                assertEquals('n', (char) node.key(1));
+                assertEquals('g', (char) node.key(0));
                 assertTrue(node.completeKey(0));
-                assertEquals('E', node.key(1));
                 assertTrue(node.completeKey(1));
-                assertEquals(0, node.key(2));
-                assertFalse(node.completeKey(2));
             },
             node -> {
                 assertEquals(0, node.stringLength());
-                assertEquals('F', node.key(0));
+                assertEquals(2, node.keyCount());
+                assertEquals('a',  (char) node.key(0));
+                assertEquals('o', node.key(1));
+                assertFalse(node.completeKey(0));
+                assertFalse(node.completeKey(1));
+            },
+            node -> {
+                assertEquals("w", getString(node));
+                assertTrue(node.completeString());
+            },
+            node -> {
+                assertEquals("t", getString(node));
+                assertEquals(1, node.keyCount());
+                assertEquals('s', node.key(0));
+                assertTrue(node.completeString());
                 assertTrue(node.completeKey(0));
-                assertEquals('G', node.key(1));
-                assertTrue(node.completeKey(1));
-            });
-        tree.forEach(System.out::println);
+            }
+        );
+
+        assertTrue(tree.contains("pin"));
+        assertTrue(tree.contains("pig"));
+        assertTrue(tree.contains("cat"));
+        assertTrue(tree.contains("cats"));
+        assertTrue(tree.contains("cow"));
     }
 
     @Test
     public void twoStringsLength3Split() {
         RadixTree tree = new RadixTree();
-        assertTrue(tree.add("ABC"));
-        assertTrue(tree.add("ABD"));
+        assertTrue(tree.add("cat"));
+        assertTrue(tree.add("car"));
         tree.forEach(System.out::println);
         new Checker().check(tree,
             node -> {
-                assertEquals("AB", getString(node), "string");
-                assertEquals((byte) 'C', node.key(0), "key 0");
+                assertEquals("ca", getString(node), "string");
+                assertEquals('t', (char) node.key(0), "key 0");
                 assertTrue(node.completeKey(0), "key complete 0");
-                assertEquals((byte) 'D', node.key(1), "key 1");
+                assertEquals('r', (char) node.key(1), "key 1");
                 assertTrue(node.completeKey(1), "key complete 1");
                 assertEquals(2, node.keyCount(), "key count");
             }
