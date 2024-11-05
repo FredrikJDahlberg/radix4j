@@ -122,7 +122,9 @@ public class RadixTree {
         final boolean processString = remaining >= 2;
         final int nodeLength = context.found.stringLength();
         final int stringLength = nodeLength - context.mismatch;
+
         if  (context.mismatch == 0) { // no common prefix - insert new parent
+            System.out.println("no common prefix = " + context.found);
             pool.allocate(parent);
             if (context.found.equals(root)) {
                 root.wrap(parent);
@@ -164,20 +166,24 @@ public class RadixTree {
             ++position;
         } else {
             if (context.mismatch == nodeLength && remaining == 0) {  // substring
+                System.out.println("substring = " + context.found);
                 context.found.completeString(true);
             } else if (context.mismatch < nodeLength) {   // split string
+                System.out.println("split string = " + context.found);
                 final int childBlock = processString ? pool.allocate(child).block() : 0;
                 final int nodeBlock = stringLength >= 2 ? pool.allocate(parent).block() : 0;
                 if (nodeBlock != 0) {
                     parent
                         .copyNode(context.found)
                         .copyString(context.mismatch + 1, stringLength - 1);
+
                 }
+
                 context.found
                     .keyCount(2)
                     .completeString(false)
                     .stringLength(context.mismatch)
-                    .index(0,  context.found.getStringByte(context.mismatch), nodeBlock)
+                    .index(0, context.found.getStringByte(context.mismatch), nodeBlock)
                     .index(1, string[position], childBlock)
                     .completeKey(0, stringLength == 1)
                     .completeKey(1, remaining == 1);
@@ -189,15 +195,20 @@ public class RadixTree {
             } else {  // add key
                 final int count = context.found.keyCount();
                 if (count < Node3.KEY_COUNT) {
+                    System.out.println("add key = " + context.found);
                     final int block = processString ? pool.allocate(child).block() : 0;
                     context.found
                         .keyCount(count + 1)
                         .index(count, string[position], block)
                         .completeKey(count, remaining == 1);
+                    --remaining;
+                    ++position;
                     if (processString) {
                         context.found.wrap(child);
                     }
                 } else {
+                    System.out.println("grow key = " + context.found);
+                    // grow key = {Node#6, "002", [5=7,6=8,7=9,]}
                     final byte key = context.found.key(2);
                     final int index = context.found.child(2);
                     final boolean complete = context.found.completeKey(2);
@@ -205,27 +216,23 @@ public class RadixTree {
                     context.found
                         .index(2, Node.EMPTY_KEY, child.block())
                         .completeKey(2, false);
+                    child
+                        .stringLength(0)
+                        .completeString(false)
+                        .index(0, key, index)
+                        .completeKey(0, complete);
                     if (length >= 1) {
                         child
-                            .stringLength(0)
-                            .completeString(false)
                             .keyCount(2)
-                            .index(0, key, index)
                             .index(1, string[position], 0)
-                            .completeKey(0, complete)
                             .completeKey(1, true);
+                        --remaining;
+                        ++position;
                     } else {
-                        child
-                            .stringLength(0)
-                            .completeString(false)
-                            .keyCount(1)
-                            .index(0, key, index)
-                            .completeKey(0, complete);
+                        child.keyCount(1);
                     }
                     context.found.wrap(child);
                 }
-                --remaining;
-                ++position;
             }
         }
         if (remaining >= 1) {
@@ -271,37 +278,48 @@ public class RadixTree {
     private static boolean mismatch(final byte[] string, final int length, final NodeContext context) {
         context.mismatch = 0;
         context.position = 0;
+        context.key = -1;
         context.keyPosition = -1;
         final Node3 found = context.found;
         int remaining = length;
+        boolean process = true;
         while (remaining >= 1) {
-            final int nodeLength = found.stringLength();
-            if (nodeLength >= 1) {
-                context.mismatch = found.mismatch(string, context.position, length);
-                if (context.mismatch == -1) {
-                    return false;
+            if (process) {
+                final int nodeLength = found.stringLength();
+                if (nodeLength >= 1) {
+                    context.mismatch = found.mismatch(string, context.position, length);
+                    if (context.mismatch == -1) {
+                        return false;
+                    }
+                    remaining -= context.mismatch;
+                    context.position += context.mismatch;
                 }
-                remaining -= context.mismatch;
-                context.position += context.mismatch;
-            }
-            if (remaining >= 1 && found.keyCount() >= 1) {
-                context.keyPosition = found.position(string[context.position]);
-                if (context.keyPosition == Node3.NOT_FOUND) {
+                process = false;
+            } else {
+                if (found.keyCount() == 0) {
                     return true;
                 }
-                final int foundPos = context.keyPosition;
-                if (found.key(foundPos) != Node3.EMPTY_KEY) {
-                    if (remaining == 1) {
-                        return !context.found.completeKey(foundPos);
-                    } else {
-                        ++context.position;
-                        context.parent.wrap(found);
-                        final int childBlock = found.child(foundPos);
-                        found.wrap(found.memorySegment(), found.segment(), childBlock);
-                    }
+
+                final byte key = string[context.position];
+                final int foundPos = found.position(key);
+                context.keyPosition = foundPos;
+                if (foundPos == Node3.NOT_FOUND) {
+                    return true;
                 }
+
+                context.key = found.key(foundPos);
+                if (context.key != Node3.EMPTY_KEY) {
+                    --remaining;
+                    ++context.position;
+                    if (remaining == 0) {
+                        return !context.found.completeKey(foundPos);
+                    }
+                    process = true;
+                }
+                context.parent.wrap(found);
+                final int childBlock = found.child(foundPos);
+                found.wrap(found.memorySegment(), found.segment(), childBlock);
             }
-            --remaining;
         }
         return true;
     }
@@ -311,6 +329,8 @@ public class RadixTree {
         Node3 parent;
         int mismatch;
         int position;
+
+        byte key;
         int keyPosition;
     }
 }
