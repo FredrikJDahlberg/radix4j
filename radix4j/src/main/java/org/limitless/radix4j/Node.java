@@ -33,6 +33,11 @@ public class Node extends BlockFlyweight {
     protected static final int FLAGS_OFFSET = 0;
     protected static final int FLAGS_LENGTH = 1;
 
+    public Node wrap(Node node) {
+        wrap(node.memorySegment(), node.segment(), node.block());
+        return this;
+    }
+
     protected byte flags() {
         return nativeByte(FLAGS_OFFSET);
     }

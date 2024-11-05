@@ -1,7 +1,6 @@
 package org.limitless.radix4j;
 
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 
 public class Node3 extends Node {
 
@@ -45,12 +44,12 @@ public class Node3 extends Node {
     public Node3() {
     }
 
-    public Node3 wrap(Node node) {
-        wrap(node.memorySegment(), node.segment(), node.block());
+    public Node3 wrap(Node3 node) {
+        super.wrap(node.memorySegment(), node.segment(), node.block());
         return this;
     }
 
-    public Node3 copy(final Node3 srcNode) {
+    public Node3 copyNode(final Node3 srcNode) {
         MemorySegment.copy(srcNode.memorySegment(), srcNode.fieldOffset(0),
             this.memorySegment(), this.fieldOffset(0), BYTES);
         return this;
@@ -78,20 +77,13 @@ public class Node3 extends Node {
         return this;
     }
 
-    protected Node3 shiftStringLeft(final int position, final int length) {
+    protected Node3 copyString(final int position, final int length) {
         if (length >= 1) {
             long stringOffset = fieldOffset(STRING_OFFSET);
             MemorySegment.copy(memorySegment(), stringOffset + position,
                 memorySegment(), stringOffset, length);
         }
         stringLength(length);
-        return this;
-    }
-
-    protected Node3 string(final Node3 srcNode, final int position, int length) {
-        stringLength(length);
-        MemorySegment.copy(srcNode.memorySegment(), srcNode.fieldOffset(STRING_OFFSET) + position,
-            this.memorySegment(), this.fieldOffset(STRING_OFFSET), length);
         return this;
     }
 
@@ -135,13 +127,6 @@ public class Node3 extends Node {
         return this;
     }
 
-    public Node3 completeString(final byte[] bytes, final int position, final int length) {
-        completeString(true);
-        stringLength(length);
-        string(bytes, position, length);
-        return this;
-    }
-
     public Node3 setIndex(final byte key, final int block) {
         keyCount(1);
         index(0, key, block);
@@ -180,14 +165,8 @@ public class Node3 extends Node {
         if (remaining >= 3 && string[stringOffset + 2] != nativeByte(STRING_OFFSET + 2)) {
             return 2;
         }
-        if (nodeLength == remainingString && completeString()) {
+        if (remainingString == nodeLength && completeString()) {
             return -1;
-        }
-        if (nodeLength + 1 == remainingString) {
-            int pos = position(string[stringOffset + nodeLength - 1]);
-            if (pos != NOT_FOUND && completeKey(pos)) {
-                return -1;
-            }
         }
         return nodeLength;
     }
@@ -234,7 +213,7 @@ public class Node3 extends Node {
         int count = keyCount();
         for (int i = 0; i < count; ++i) {
             if (completeKey(i)) {
-                builder.append(i + 1);
+                builder.append(i);
             }
         }
         if (builder.length() != length) {
