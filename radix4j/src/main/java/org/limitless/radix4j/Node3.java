@@ -138,8 +138,13 @@ public class Node3 extends Node {
         return nativeByte(location) | (nativeByte(location + 1) << 8) | (nativeByte(location + 2) << 16);
     }
 
-    public byte getStringByte(int position) {
+    public byte stringByte(int position) {
         return nativeByte(Node3.STRING_OFFSET + position);
+    }
+
+    public Node3 stringByte(int position, byte ch) {
+        nativeByte(Node3.STRING_OFFSET + position, ch);
+        return this;
     }
 
     public Node3 index(int position, byte key, int block) {

@@ -122,117 +122,52 @@ public class RadixTree {
         final boolean processString = remaining >= 2;
         final int nodeLength = context.found.stringLength();
         final int stringLength = nodeLength - context.mismatch;
-
         if  (context.mismatch == 0) { // no common prefix - insert new parent
-            System.out.println("no common prefix = " + context.found);
-            pool.allocate(parent);
-            if (context.found.equals(root)) {
-                root.wrap(parent);
-            }
-            if (context.keyPosition >= 0) {
-                context.parent.index(context.keyPosition, context.parent.key(context.keyPosition), parent.block());
-            }
-
-            final int childBlock = processString ? pool.allocate(child).block() : 0;
-            final int foundBlock = stringLength == 1 && context.found.keyCount() == 0 ? 0 : context.found.block();
-            final byte foundKey = context.found.getStringByte(0);
-            final byte childKey = length >= 1 ? string[position] : 0;
-            if (stringLength == 0) {
-                parent
-                    .stringLength(remaining)
-                    .completeString(true)
-                    .string(string, offset, length);
-            } else {
-                parent
-                    .stringLength(0)
-                    .completeString(false)
-                    .keyCount(2)
-                    .index(0, foundKey, foundBlock)
-                    .index(1, childKey, childBlock)
-                    .completeKey(0, stringLength == 1)
-                    .completeKey(1, remaining == 1);
-            }
-            if (foundBlock == 0) {
-                pool.free(context.found);
-                context.found.wrap(parent);
-            } else {
-                context.found
-                    .copyString(1, stringLength - 1);
-            }
-            if (processString) {
-                context.found.wrap(child);
-            }
+            addParent(stringLength, string, position, length);
             --remaining;
             ++position;
         } else {
             if (context.mismatch == nodeLength && remaining == 0) {  // substring
-                System.out.println("substring = " + context.found);
                 context.found.completeString(true);
-            } else if (context.mismatch < nodeLength) {   // split string
-                System.out.println("split string = " + context.found);
-                final int childBlock = processString ? pool.allocate(child).block() : 0;
-                final int nodeBlock = stringLength >= 2 ? pool.allocate(parent).block() : 0;
-                if (nodeBlock != 0) {
-                    parent
-                        .copyNode(context.found)
-                        .copyString(context.mismatch + 1, stringLength - 1);
+            } else if (context.mismatch < nodeLength) {
+                int parentBlock = 0;
 
-                }
-
-                context.found
-                    .keyCount(2)
-                    .completeString(false)
-                    .stringLength(context.mismatch)
-                    .index(0, context.found.getStringByte(context.mismatch), nodeBlock)
-                    .index(1, string[position], childBlock)
-                    .completeKey(0, stringLength == 1)
-                    .completeKey(1, remaining == 1);
-                if (processString) {
-                    context.found.wrap(child);
-                }
-                --remaining;
-                ++position;
-            } else {  // add key
-                final int count = context.found.keyCount();
-                if (count < Node3.KEY_COUNT) {
-                    System.out.println("add key = " + context.found);
-                    final int block = processString ? pool.allocate(child).block() : 0;
-                    context.found
-                        .keyCount(count + 1)
-                        .index(count, string[position], block)
-                        .completeKey(count, remaining == 1);
-                    --remaining;
-                    ++position;
-                    if (processString) {
-                        context.found.wrap(child);
-                    }
-                } else {
-                    System.out.println("grow key = " + context.found);
-                    // grow key = {Node#6, "002", [5=7,6=8,7=9,]}
-                    final byte key = context.found.key(2);
-                    final int index = context.found.child(2);
-                    final boolean complete = context.found.completeKey(2);
-                    pool.allocate(child);
-                    context.found
-                        .index(2, Node.EMPTY_KEY, child.block())
-                        .completeKey(2, false);
-                    child
-                        .stringLength(0)
-                        .completeString(false)
-                        .index(0, key, index)
-                        .completeKey(0, complete);
-                    if (length >= 1) {
-                        child
-                            .keyCount(2)
-                            .index(1, string[position], 0)
-                            .completeKey(1, true);
-                        --remaining;
-                        ++position;
+                if (stringLength >= 2 || stringLength == 1 && context.found.keyCount() >= 1) {
+                    parentBlock = pool.allocate(parent).block();
+                    if (stringLength >= 2) {
+                        parent
+                            .copyNode(context.found)
+                            .copyString(context.mismatch + 1, stringLength - 1);
                     } else {
-                        child.keyCount(1);
+                        final byte oldKey = context.found.key(0);
+                        parent
+                            .stringLength(1).stringByte(0, oldKey).completeString(true)
+                            .completeKey(0, false);
                     }
-                    context.found.wrap(child);
                 }
+                context.found
+                    .stringLength(context.mismatch).completeString(false)
+                    .keyCount(1)
+                    .index(0, context.found.stringByte(context.mismatch), parentBlock)
+                    .completeKey(0, remaining == 1);  // stringLength
+                final int childBlock = processString ? pool.allocate(child).block() : 0;
+                final int consumed = addKey(remaining, string[position], childBlock, context.found);
+                if (processString) {
+                     context.found.wrap(child);
+                }
+                position += consumed;
+                remaining -= consumed;
+            } else {  // add key
+                int foundBlock = 0;
+                if (remaining >= 2) {
+                    foundBlock = pool.allocate(parent).block();
+                }
+                final int consumed = addKey(remaining, string[position], foundBlock, context.found);
+                if (remaining >= 2) {
+                    context.found.wrap(parent);
+                }
+                position += consumed;
+                remaining -= consumed;
             }
         }
         if (remaining >= 1) {
@@ -240,26 +175,86 @@ public class RadixTree {
         }
     }
 
+    private void addParent(int stringLength, final byte[] string, int position, int length) {
+        pool.allocate(parent);
+        if (context.found.equals(root)) {
+            root.wrap(parent);
+        }
+        if (context.keyPosition >= 0) {
+            context.parent.index(context.keyPosition, context.parent.key(context.keyPosition), parent.block());
+        }
+
+        final boolean processString = length >= 2;
+        final int childBlock = processString ? pool.allocate(child).block() : 0;
+        final byte childKey = length >= 1 ? string[position] : 0;
+        final int foundBlock = stringLength == 1 && context.found.keyCount() == 0 ? 0 : context.found.block();
+        final byte foundKey = context.found.stringByte(0);
+        if (stringLength == 0) {
+            parent
+                .stringLength(length).completeString(true).string(string, position, length);
+        } else {
+            parent
+                .stringLength(0).completeString(false)
+                .keyCount(2)
+                .index(0, foundKey, foundBlock).completeKey(0, stringLength == 1)
+                .index(1, childKey, childBlock).completeKey(1, length == 1);
+        }
+        if (foundBlock == 0) {
+            pool.free(context.found);
+            context.found.wrap(parent);
+        } else {
+            context.found.copyString(1, stringLength - 1);
+        }
+        if (processString) {
+            context.found.wrap(child);
+        }
+    }
+
+    private int addKey(final int length, final byte key, final int block, Node3 found) {
+        final int count = found.keyCount();
+        int consumed = 0;
+        if (count < Node3.KEY_COUNT) {
+            found
+                .keyCount(count + 1).index(count, key, block).completeKey(count, length == 1);
+            consumed = 1;
+        } else {
+            final byte foundKey = found.key(2);
+            final int foundChild = found.child(2);
+            final boolean complete = found.completeKey(2);
+            pool.allocate(child);
+            found
+                .index(2, Node.EMPTY_KEY, child.block()).completeKey(2, false);
+            child
+                .stringLength(0).completeString(false)
+                .index(0, foundKey, foundChild).completeKey(0, complete)
+                .keyCount(2).index(1, key, block).completeKey(1, true);
+                consumed = 1;
+            found.wrap(child);
+        }
+        return consumed;
+    }
+
     private void addStringSuffix(boolean processString, int remaining, final byte[] string, int position, Node3 found) {
         while (remaining >= 1) {
             if (processString) {
                 final int stringLength = Math.min(Node3.STRING_LENGTH, remaining);
                 found
-                    .stringLength(stringLength)
-                    .string(string, position, stringLength)
+                    .stringLength(stringLength).string(string, position, stringLength)
                     .completeString(remaining == stringLength);
                 position += stringLength;
                 remaining -= stringLength;
                 processString = false;
             } else {
+                final int count = found.keyCount();
                 if (remaining >= 2) {
                     final int block = pool.allocate(child).block();
-                    found.setIndex(string[position], block);
-                    found.wrap(child).completeString(false);
-                } else {
                     found
-                        .setIndex(string[position], 0)
-                        .completeKey(0, true);
+                        .keyCount(1)
+                        .index(0, string[position], block);
+                    child.completeString(false);
+                    found.wrap(child);
+                } else {
+                    found.setIndex(string[position], 0).completeKey(0, true);
                 }
                 --remaining;
                 ++position;

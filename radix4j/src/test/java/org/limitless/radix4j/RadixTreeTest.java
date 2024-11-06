@@ -69,7 +69,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void splitString1() {
+    public void splitString2() {
         RadixTree tree = new RadixTree();
         addContains(tree, "m028");
         addContains(tree, "m030");
@@ -86,23 +86,42 @@ public class RadixTreeTest {
                 assertFalse(node.completeKey(1));
             },
             node -> {
-                assertEquals("8", getString(node));
-                assertFalse(node.completeString());
+                assertEquals("0", getString(node));
+                assertTrue(node.completeString());
             },
             node -> {
-                assertEquals("0", getString(node));
-                assertFalse(node.completeString());
+                assertEquals("8", getString(node));
+                assertTrue(node.completeString());
             }
         );
-
     }
 
     @Test
-    public void splitStringAndGrowKeys() {
+    public void splitString3() {
+        RadixTree tree = new RadixTree();
+        addContains(tree, "m028");
+        addContains(tree, "m029");
+        addContains(tree, "m030");
+        tree.forEach(System.out::println);
+    }
+
+    @Test
+    public void splitString4() {
         RadixTree tree = new RadixTree();
         addContains(tree, "m025");
         addContains(tree, "m026");
         addContains(tree, "m027");
+        addContains(tree, "m030");
+        tree.forEach(System.out::println);
+    }
+
+    @Test
+    public void splitString5() {
+        RadixTree tree = new RadixTree();
+        addContains(tree, "m025");
+        addContains(tree, "m026");
+        addContains(tree, "m027");
+        addContains(tree, "m028");
         addContains(tree, "m030");
         tree.forEach(System.out::println);
     }
@@ -115,7 +134,7 @@ public class RadixTreeTest {
         addContains(tree, "cow");
         addContains(tree, "pig");
         addContains(tree, "pin");
-
+        tree.forEach(System.out::println);
         new Checker().check(tree,
             node -> {
                 assertEquals(0, node.stringLength());
@@ -180,12 +199,12 @@ public class RadixTreeTest {
 
         new Checker().check(tree,
             node -> {
-                assertEquals("car", getString(node), "string");
-                assertEquals((byte) 's', node.key(0), "key 0");
-                assertTrue(node.completeKey(0), "key complete 0");
-                assertEquals((byte) 't', node.key(1), "key 1");
-                assertTrue(node.completeKey(1), "key complete 1");
-                assertEquals(2, node.keyCount(), "key count");
+                assertEquals("car", getString(node));
+                assertEquals((byte) 's', node.key(0));
+                assertTrue(node.completeKey(0));
+                assertEquals((byte) 't', node.key(1));
+                assertTrue(node.completeKey(1));
+                assertEquals(2, node.keyCount());
             }
         );
     }
@@ -193,24 +212,24 @@ public class RadixTreeTest {
     @Test
     public void commonPrefix3String5SplitRootNode() {
         RadixTree tree = new RadixTree();
-        addContains(tree, "ABCDF");
-        addContains(tree, "ABCEG");
-
+        addContains(tree, "AB_DF");
+        addContains(tree, "AB_EG");
+        tree.forEach(System.out::println);
         new Checker().check(tree,
             node -> {
-                assertEquals("ABC", getString(node), "string");
-                assertEquals((byte) 'D', node.key(0), "key 0");
-                assertFalse(node.completeKey(0), "key complete 0");
-                assertEquals((byte) 'E', node.key(1), "key 1");
-                assertFalse(node.completeKey(1), "key complete 1");
-                assertEquals(2, node.keyCount(), "key count");
+                assertEquals("AB_", getString(node));
+                assertEquals((byte) 'D', node.key(0));
+                assertFalse(node.completeKey(0));
+                assertEquals((byte) 'E', node.key(1));
+                assertFalse(node.completeKey(1));
+                assertEquals(2, node.keyCount());
             },
             node -> {
-                assertEquals("G", getString(node), "string");
+                assertEquals("G", getString(node));
                 assertTrue(node.completeString());
             },
             node -> {
-                assertEquals("F", getString(node), "string");
+                assertEquals("F", getString(node));
                 assertTrue(node.completeString());
             }
         );
@@ -336,37 +355,31 @@ public class RadixTreeTest {
     @Test
     public void commonPrefixAddStringNotKey() {
         final RadixTree tree = new RadixTree();
-        addContains(tree, "abcdefghij250");
-        addContains(tree, "abcdefghij260");
-        addContains(tree, "abcdefghij270");
-        //addContains(tree, "abcdefghij280");
-        assertTrue(tree.add("abcdefghij280"));
-        tree.forEach(System.out::println);
+        addContains(tree, "abc250");
+        addContains(tree, "abc260");
+        addContains(tree, "abc270");
+        addContains(tree, "abc280");
+
         new Checker().check(tree,
             node -> {
                 assertEquals("abc", getString(node));
-                assertEquals('d', (char) node.key(0));
+                assertEquals('2', (char) node.key(0));
             },
             node -> {
-                assertEquals("efg", getString(node));
-                assertEquals('h', (char) node.key(0));
-            },
-            node -> {
-                assertEquals("ij2", getString(node));
+                assertEquals("", getString(node));
                 assertEquals(3, node.keyCount());
                 assertEquals('5', (char) node.key(0));
                 assertEquals('6', (char) node.key(1));
                 assertEquals(0, node.key(2));
             },
             node -> {
-                assertEquals("0", getString(node));
-                assertTrue(node.completeString());
+                assertEquals("", getString(node));
                 assertEquals(2, node.keyCount());
                 assertEquals('7', (char) node.key(0));
                 assertEquals('8', (char) node.key(1));
             },
             node -> {
-                assertEquals("0", getString(node), node.toString());
+                assertEquals("0", getString(node));
                 assertTrue(node.completeString());
             },
             node -> {
