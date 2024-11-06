@@ -127,12 +127,6 @@ public class Node3 extends Node {
         return this;
     }
 
-    public Node3 setIndex(final byte key, final int block) {
-        keyCount(1);
-        index(0, key, block);
-        return this;
-    }
-
     public int child(int position) {
         int location = position * INDEX_LENGTH + INDICES_OFFSET;
         return nativeByte(location) | (nativeByte(location + 1) << 8) | (nativeByte(location + 2) << 16);
@@ -149,7 +143,7 @@ public class Node3 extends Node {
 
     public Node3 index(int position, byte key, int block) {
         key(position, key);
-        int location = position * INDEX_LENGTH + INDICES_OFFSET;
+        final int location = position * INDEX_LENGTH + INDICES_OFFSET;
         nativeByte(location, (byte) block);
         nativeByte(location + 1, (byte) (block >>> 8));
         nativeByte(location + 2, (byte) (block >>> 16));
@@ -160,7 +154,7 @@ public class Node3 extends Node {
     public int mismatch(final byte[] string, final int stringOffset, final int stringLength) {
         final int nodeLength = stringLength();
         final int remainingString = stringLength - stringOffset;
-        int remaining = Math.min(remainingString, nodeLength);
+        final int remaining = Math.min(remainingString, nodeLength);
         if (remaining >= 1 && string[stringOffset] != nativeByte(STRING_OFFSET)) {
             return 0;
         }
