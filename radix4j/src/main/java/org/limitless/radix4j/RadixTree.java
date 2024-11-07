@@ -65,7 +65,19 @@ public class RadixTree {
 
     public RadixTree remove(String string) {
         if (contains(string)) {
-            // do stuff
+            final Node3 found = context.found;
+            final int count = found.keyCount();
+
+            if (found.stringLength() == string.length() && found.completeString()) {
+                found.completeString(false);
+            }
+            if (context.key != -1 && context.found.completeKey(context.keyPosition)) {
+                found.completeKey(context.keyPosition, false);
+                found.keyCount(count - 1);
+            }
+            // let mismatch track the previous node with complete string or more than one key
+            // remove all nodes below
+            --size;
         }
         return this;
     }
@@ -122,7 +134,7 @@ public class RadixTree {
         final int nodeLength = context.found.stringLength();
         final int stringLength = nodeLength - context.mismatch;
         final int consumed;
-        if  (context.mismatch == 0) { // no common prefix - insert new parent
+        if  (context.mismatch == 0 && nodeLength >= 1) { // no common prefix - insert new parent
             addParent(stringLength, string, offset, length);
             consumed = 1;
         } else {
@@ -130,7 +142,7 @@ public class RadixTree {
                 context.found.completeString(true);
                 consumed = 0;
             } else if (context.mismatch < nodeLength) {
-                consumed = splitString(stringLength, string[offset], length);
+                consumed = splitString(stringLength, string[offset], length, context.found, context.mismatch);
             } else {  // add key
                 final int newBlock = length >= 2 ? pool.allocate(parent).block() : 0;
                 consumed = addKey(length, string[offset], newBlock, context.found);
@@ -179,31 +191,36 @@ public class RadixTree {
         }
     }
 
-    private int splitString(final int stringLength, final byte key, final int length) {
-        int consumed = 0;
+    private int splitString(final int stringLength,
+                            final byte key,
+                            final int length,
+                            final Node3 found,
+                            final int mismatch) {
         int parentBlock = 0;
-        if (stringLength >= 2 || stringLength == 1 && context.found.keyCount() >= 1) {
+        final int count = found.keyCount();
+        if (stringLength != 1 || length != 1 || count != 0) {
             parentBlock = pool.allocate(parent).block();
-            if (stringLength >= 2) {
-                parent
-                    .copyNode(context.found)
-                    .copyString(context.mismatch + 1, stringLength - 1);
-            } else {
-                final byte oldKey = context.found.key(0);
-                parent
-                    .stringLength(1).stringByte(0, oldKey).completeString(true)
-                    .completeKey(0, false);
-            }
+            parent.copyNode(found);
         }
-        context.found
-            .stringLength(context.mismatch).completeString(false)
+        if (stringLength >= 2) {
+            parent.copyString(mismatch + 1, stringLength - 1);
+        }
+        if (stringLength == 1 && count == 1) {
+            final byte oldKey = found.key(0);
+            parent
+                .stringLength(1).stringByte(0, oldKey).completeString(true)
+                .completeKey(0, false).keyCount(0);
+        }
+        found
+            .stringLength(mismatch).completeString(false)
             .keyCount(1)
-            .index(0, context.found.stringByte(context.mismatch), parentBlock)
+            .index(0, found.stringByte(mismatch), parentBlock)
             .completeKey(0, length == 1);  // stringLength
+
         final int childBlock = length >= 2 ? pool.allocate(child).block() : 0;
-        consumed = addKey(length, key, childBlock, context.found);
+        final int consumed = addKey(length, key, childBlock, found);
         if (childBlock != 0) {
-            context.found.wrap(child);
+            found.wrap(child);
         }
         return consumed;
     }
@@ -285,7 +302,8 @@ public class RadixTree {
                 }
                 process = false;
             } else {
-                if (found.keyCount() == 0) {
+                final int count = found.keyCount();
+                if (count == 0) {
                     return true;
                 }
 
