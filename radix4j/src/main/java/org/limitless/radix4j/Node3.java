@@ -128,8 +128,9 @@ public class Node3 extends Node {
     }
 
     public int child(int position) {
-        int location = position * INDEX_LENGTH + INDICES_OFFSET;
-        return nativeByte(location) | (nativeByte(location + 1) << 8) | (nativeByte(location + 2) << 16);
+        final int location = position * INDEX_LENGTH + INDICES_OFFSET;
+        return nativeByte(location) & 0xff | (nativeByte(location + 1) & 0xff) << 8 |
+            (nativeByte(location + 2) & 0xff) << 16;
     }
 
     public byte stringByte(int position) {
@@ -144,7 +145,7 @@ public class Node3 extends Node {
     public Node3 index(int position, byte key, int block) {
         key(position, key);
         final int location = position * INDEX_LENGTH + INDICES_OFFSET;
-        nativeByte(location, (byte) block);
+        nativeByte(location, (byte) (block & 0xff));
         nativeByte(location + 1, (byte) (block >>> 8));
         nativeByte(location + 2, (byte) (block >>> 16));
         return this;
@@ -204,7 +205,7 @@ public class Node3 extends Node {
 
     public StringBuilder append(StringBuilder builder) {
         builder.setLength(0);
-        builder.append("{Node#").append(block()).append(", ");
+        builder.append("{Node").append(segment()).append('#').append(block()).append(", ");
         int length = builder.length();
         if (completeString()) {
             builder.append('S');
@@ -239,7 +240,7 @@ public class Node3 extends Node {
 
     @Override
     public String toString() {
-        return append(new StringBuilder(128)).toString();
+        return append(new StringBuilder(64)).toString();
     }
 
     public static void clear(final Node3 node) {
