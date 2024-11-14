@@ -8,8 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class Checker {
 
     private Consumer<Node3>[] checkers;
-    private Consumer<RadixTree> action;
-    private int position;
+        private int position;
 
     @SafeVarargs
     public final void check(final RadixTree tree, final Consumer<Node3>... checkers) {

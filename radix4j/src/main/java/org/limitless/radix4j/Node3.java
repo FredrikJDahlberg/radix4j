@@ -242,9 +242,4 @@ public class Node3 extends Node {
     public String toString() {
         return append(new StringBuilder(64)).toString();
     }
-
-    public static void clear(final Node3 node) {
-        node.nativeLong(0, 0);
-        node.nativeLong(Long.BYTES, 0);
-    }
 }

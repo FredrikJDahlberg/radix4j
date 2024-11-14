@@ -1,6 +1,9 @@
 package org.limitless.radix4j;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+
+import javax.naming.OperationNotSupportedException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -409,7 +412,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void splitString6() {
+    public void rootSplitString6() {
         final RadixTree tree = new RadixTree();
         addContains(tree, "" + (17 + 1_000_000_000_000_000L));
         addContains(tree, "" + (18 + 1_000_000_000_000_000L));
@@ -468,8 +471,9 @@ public class RadixTreeTest {
         System.out.println("allocated = " + (x / 1024) + " MB " + (s / 1024) + " MB " + ((double) x / s));
     }
 
+    @Disabled
     @Test
-    public void removeString() {
+    public void removeString() throws OperationNotSupportedException {
         final RadixTree tree = new RadixTree();
         assertTrue(tree.add("cat"));
         assertTrue(tree.add("cats"));

@@ -4,19 +4,12 @@ import org.limitless.fsmp4j.BlockFlyweight;
 
 public class Node extends BlockFlyweight {
 
-    protected static final byte INCLUDED = 1;
-    protected static final byte NOT_INCLUDED = 0;
-
-    protected static final byte INNER_NODE = 0;
-    protected static final byte STRING_NODE = 1;
-
     protected static final int NOT_FOUND = -1;
     protected static final int KEY_LENGTH_BITS = 8;
     protected static final int INDEX_LENGTH_BITS = 24;
     protected static final int EMPTY_BLOCK = 0;
     protected static final byte EMPTY_KEY = 0;
     protected static final int INDEX_LENGTH = INDEX_LENGTH_BITS / Byte.SIZE;
-
     protected static final int BYTES = 16; // bytes
 
     // bit layout
@@ -45,10 +38,6 @@ public class Node extends BlockFlyweight {
     protected Node flags(final byte value) {
         nativeByte(FLAGS_OFFSET, value);
         return this;
-    }
-
-    private long fieldOffset(int offset, int index) {
-        return (long) index * (long)this.encodedLength() + (long)offset;
     }
 
     public int position(byte key) {
