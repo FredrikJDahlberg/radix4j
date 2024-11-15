@@ -133,11 +133,11 @@ public class Node3 extends Node {
             (nativeByte(location + 2) & 0xff) << 16;
     }
 
-    public byte stringByte(int position) {
+    public byte string(int position) {
         return nativeByte(Node3.STRING_OFFSET + position);
     }
 
-    public Node3 stringByte(int position, byte ch) {
+    public Node3 string(int position, byte ch) {
         nativeByte(Node3.STRING_OFFSET + position, ch);
         return this;
     }

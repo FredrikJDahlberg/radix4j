@@ -9,6 +9,11 @@ sourceSets {
         java.srcDirs = ['src/jmh/java']
     }
 }
+repositories {
+   flatDir {
+       dirs("../radix4j/libs")
+   }
+}
 
 dependencies {
     implementation project(':radix4j')
@@ -17,5 +22,6 @@ dependencies {
 }
 
 jmh {
-    includes = ['Benchmark']
+//    includes = ['Benchmark']
+    includes = ['RadixTreeBenchmark']
 }

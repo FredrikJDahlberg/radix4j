@@ -7,6 +7,7 @@ public class Node extends BlockFlyweight {
     protected static final int NOT_FOUND = -1;
     protected static final int KEY_LENGTH_BITS = 8;
     protected static final int INDEX_LENGTH_BITS = 24;
+
     protected static final int EMPTY_BLOCK = 0;
     protected static final byte EMPTY_KEY = 0;
     protected static final int INDEX_LENGTH = INDEX_LENGTH_BITS / Byte.SIZE;
@@ -25,6 +26,11 @@ public class Node extends BlockFlyweight {
     // byte layout
     protected static final int FLAGS_OFFSET = 0;
     protected static final int FLAGS_LENGTH = 1;
+
+    @Override
+    public int block() {
+        return (segment() << 24) | super.block() & 0x00ffffff;
+    }
 
     public Node wrap(Node node) {
         wrap(node.memorySegment(), node.segment(), node.block());

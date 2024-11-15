@@ -5,12 +5,15 @@ import org.junit.jupiter.api.Test;
 
 import javax.naming.OperationNotSupportedException;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RadixTreeTest {
 
     @Test
-    public void rootAddParent() {
+    public void addRootParent() {
         final RadixTree tree = new RadixTree();
         addContains(tree, "abc");
         addContains(tree, "xyz");
@@ -18,7 +21,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootAddParentAndKey() {
+    public void addRootParentAndKey() {
         final RadixTree tree = new RadixTree();
         addContains(tree, "ab");
         addContains(tree, "xy");
@@ -81,7 +84,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplit2String15() {
+    public void splitRoot2String15() {
         final RadixTree tree = new RadixTree();
         addContains(tree, "abcdefghijklm028");
         assertTrue(tree.add("abcdefghijklm030"));
@@ -121,21 +124,21 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootAddCompleteKeyString2() {
+    public void addRootCompleteKeyString2() {
         RadixTree tree = new RadixTree();
         addContains(tree, "on");
         addContains(tree, "one");
     }
 
     @Test
-    public void rootAddCompleteKeyString3() {
+    public void addRootCompleteKeyString3() {
         RadixTree tree = new RadixTree();
         addContains(tree, "cat");
         addContains(tree, "cats");
     }
 
     @Test
-    public void rootAddKeyString4() {
+    public void addRootKeyString4() {
         RadixTree tree = new RadixTree();
         addContains(tree, "AB_DF");
         addContains(tree, "AB_EG");
@@ -160,7 +163,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplit2String4Keys2() {
+    public void splitRoot2String4Keys2() {
         RadixTree tree = new RadixTree();
         addContains(tree, "m028");
         addContains(tree, "m030");
@@ -186,7 +189,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplit3String4Keys3() {
+    public void splitRoot3String4Keys3() {
         RadixTree tree = new RadixTree();
         addContains(tree, "m028");
         addContains(tree, "m029");
@@ -194,7 +197,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplit4String4Keys4() {
+    public void splitRoot4String4Keys4() {
         RadixTree tree = new RadixTree();
         addContains(tree, "m025");
         addContains(tree, "m026");
@@ -203,7 +206,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplit5String5Keys5() {
+    public void splitRoot5String5Keys5() {
         RadixTree tree = new RadixTree();
         addContains(tree, "m025");
         addContains(tree, "m026");
@@ -258,7 +261,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void basics() {
+    public void addBasics() {
         RadixTree tree = new RadixTree();
         addContains(tree, "cat");
         addContains(tree, "cats");
@@ -311,7 +314,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplitString3() {
+    public void splitRootString3() {
         RadixTree tree = new RadixTree();
         addContains(tree, "cat");
         addContains(tree, "car");
@@ -329,7 +332,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplitString4() {
+    public void splitRootString4() {
         RadixTree tree = new RadixTree();
         addContains(tree, "cars");
         addContains(tree, "cart");
@@ -347,7 +350,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootAddString11Keys6() {
+    public void addRootString11Keys6() {
         RadixTree tree = new RadixTree();
         addContains(tree, "abcdefghij-0");
         addContains(tree, "abcdefghij-1");
@@ -404,7 +407,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplit2String11Keys1() {
+    public void splitRoot2String11Keys1() {
         final RadixTree tree = new RadixTree();
         addContains(tree, "flabbergasted");
         assertFalse(tree.add("flabbergasted"));
@@ -412,7 +415,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void rootSplitString6() {
+    public void splitRootString6() {
         final RadixTree tree = new RadixTree();
         addContains(tree, "" + (17 + 1_000_000_000_000_000L));
         addContains(tree, "" + (18 + 1_000_000_000_000_000L));
@@ -463,31 +466,150 @@ public class RadixTreeTest {
         int s = 0;
         for (int i = 0; i < 100_000; ++i) {
             String str = "12345678901234567890_" + i;
-            s += str.length();
+            s += 28; // str.length() + 24;
             addContains(tree, str);
         }
-
         int x = 16 * 128 * 1024; // tree.blocks() * 16;
         System.out.println("allocated = " + (x / 1024) + " MB " + (s / 1024) + " MB " + ((double) x / s));
     }
 
-    @Disabled
     @Test
-    public void removeString() throws OperationNotSupportedException {
+    public void removeString() {
         final RadixTree tree = new RadixTree();
         assertTrue(tree.add("cat"));
-        assertTrue(tree.add("cats"));
         assertTrue(tree.contains("cat"));
+        assertEquals(1, tree.size());
+
+        assertTrue(tree.add("cats"));
         assertTrue(tree.contains("cats"));
         assertEquals(2, tree.size());
 
         tree.remove("cats");
-        assertEquals(1, tree.size());
         assertFalse(tree.contains("cats"));
+
+        assertTrue(tree.contains("cat"));
+        assertEquals(1, tree.size());
 
         tree.remove("cat");
         assertFalse(tree.contains("cat"));
         assertEquals(0, tree.size());
+    }
+
+    @Test
+    public void removeRootKey() {
+        var tree = new RadixTree();
+        addContains(tree, "cat");
+        addContains(tree, "cats");
+        assertEquals(2, tree.size());
+
+        tree.remove("cats");
+        assertTrue(tree.contains("cat"));
+        assertEquals(1, tree.size());
+
+        new Checker().check(tree,
+            node -> {
+                assertEquals("cat", getString(node));
+                assertTrue(node.completeString());
+                assertEquals(0, node.keyCount());
+            }
+        );
+    }
+
+    @Test
+    public void removeRootSubString() {
+        var tree = new RadixTree();
+        addContains(tree, "cat");
+        addContains(tree, "cats");
+        assertEquals(2, tree.size());
+
+        tree.remove("cat");
+        assertTrue(tree.contains("cats"));
+        assertEquals(1, tree.size());
+
+        new Checker().check(tree,
+            node -> {
+                assertEquals("cat", getString(node));
+                assertFalse(node.completeString());
+                assertEquals(1, node.keyCount());
+                assertEquals('s', (char) node.key(0));
+                assertTrue(node.completeKey(0));
+            }
+        );
+    }
+
+    @Test
+    public void removeNodeSubString() {
+        var tree = new RadixTree();
+        addContains(tree, "cat");
+        addContains(tree, "cats");
+        addContains(tree, "pig");
+        assertEquals(3, tree.size());
+
+        tree.remove("cat");
+        assertTrue(tree.contains("cats"));
+        assertTrue(tree.contains("pig"));
+        assertEquals(2, tree.size());
+
+        new Checker().check(tree,
+            node -> {
+                assertEquals(0, node.stringLength());
+                assertEquals(2, node.keyCount());
+                assertEquals('c', node.key(0));
+                assertFalse(node.completeKey(0));
+                assertEquals('p', node.key(1));
+                assertFalse(node.completeKey(1));
+            },
+            node -> {
+                assertEquals("ig", getString(node));
+                assertTrue(node.completeString());
+            },
+            node -> {
+                assertEquals("at", getString(node));
+                assertFalse(node.completeString());
+                assertEquals(1, node.keyCount());
+                assertEquals('s', (char) node.key(0));
+                assertTrue(node.completeKey(0));
+            }
+        );
+    }
+
+    @Test
+    public void removeNodeKey() {
+        var tree = new RadixTree();
+        addContains(tree, "cat");
+        addContains(tree, "cats");
+        addContains(tree, "pig");
+        assertEquals(3, tree.size());
+
+        tree.remove("cats");
+        assertFalse(tree.contains("cats"));
+        assertTrue(tree.contains("cat"));
+        assertTrue(tree.contains("pig"));
+        assertEquals(2, tree.size());
+
+        tree.remove("cat");
+        assertFalse(tree.contains("cat"));
+        assertTrue(tree.contains("pig"));
+        assertEquals(1, tree.size());
+    }
+
+    @Test
+    public void removeBasics() {
+        var tree = new RadixTree();
+        String[] strings = {"cat", "cats", "cow", "pig", "pin", "crow"};
+        for (String string : strings) {
+            addContains(tree, string);
+        }
+
+        int size = tree.size();
+        assertEquals(6, tree.size(), "size");
+        for (int i = size - 1; i >= 0; --i) {
+            final String string = strings[i];
+            assertTrue(tree.contains(string), "contains: " + string);
+            tree.remove(string);
+            assertFalse(tree.contains(string), "not contains: " + string);
+        }
+        assertTrue(tree.isEmpty(), "empty");
     }
 
     private void addContains(final RadixTree tree, final String string) {
