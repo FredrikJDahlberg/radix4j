@@ -9,7 +9,7 @@ import java.util.function.Consumer;
 public class RadixTree {
 
     // FIXME: add segment to key index (more than one segment)
-    // FIXME: add remove method
+    // FIXME: remove set node to the start node of long strings
 
     private static final String BLOCKS_PER_SEGMENT_PROP = "radix4j.blocks.per.segment";
     private static final int BLOCKS_PER_SEGMENT = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 128 * 1024);
@@ -20,10 +20,9 @@ public class RadixTree {
     private final Node3 parent;
     private final NodeState state;
 
-    private final int[] indices = new int[256];
     private int size;
 
-    private int allocated;
+    private int allocatedBlocks;
 
     private static final int TYPE_NULL = 0;
     private static final int TYPE_SUBSTRING = 1;
@@ -36,69 +35,104 @@ public class RadixTree {
         pool = new BlockPool.Builder<>(Arena.ofShared(), Node3.class).blocksPerSegment(BLOCKS_PER_SEGMENT).build();
         parent = pool.allocate();
         child = pool.allocate();
-        state = new NodeState();
-        state.found = pool.allocate();
-        state.parent = pool.allocate();
-        state.node = pool.allocate();
+        state = new NodeState(pool.allocate(), pool.allocate(), pool.allocate());
     }
 
+    /**
+     * Add a string to the collection.
+     * @param string value
+     * @return true when value is inserted
+     */
     public boolean add(final String string) {
-        final byte[] bytes = string.getBytes();
+        return add(string.getBytes());
+    }
+
+    /**
+     * Add a string to the collection.
+     * @param string value
+     * @return true when value is inserted
+     */
+    public boolean add(final byte[] string) {
         if (root == null) {
             root = pool.allocate().completeString(false);
             state.found.wrap(root);
-            addString(bytes.length, bytes, 0, state.found);
+            addString(string.length, string, 0, state.found);
             ++size;
             return true;
         }
-        if (!mismatch(bytes, bytes.length, state)) {
+        if (!state.mismatch(root, string, string.length)) {
             return false;
         }
         ++size;
 
-        addString(state.position, bytes.length, bytes, state);
+        addString(state.position, string.length, string, state);
         return true;
     }
 
+    /**
+     * Check value presence
+     * @param string value
+     * @return true if the string is present
+     */
     public boolean contains(final String string) {
         if (isEmpty()) {
             return false;
         }
-
-        final byte[] bytes = string.getBytes();
-        return !mismatch(bytes, bytes.length, state);
+        return contains(string.getBytes());
     }
 
-    public RadixTree remove(final String string) {
-        if (!contains(string)) {
-            return this;
-        }
+    /**
+     * Check value presence
+     * @param string value
+     * @return true if the string is present
+     */
+    public boolean contains(final byte[] string) {
+        return !state.mismatch(root, string, string.length);
+    }
 
+    /**
+     * Remove string form collection
+     * @param string value
+     */
+    public void remove(final String string) {
+        remove(string.getBytes());
+    }
+
+    /**
+     * Remove string form collection
+     * @param string value
+     */
+    public void remove(final byte[] string) {
+        if (isEmpty()) {
+            return;
+        }
+        if (state.mismatch(root, string, string.length))
+        {
+            return;
+        }
         --size;
 
         final Node3 node = state.found;
         final int position = state.keyPosition;
         int count = node.keyCount();
-        final boolean remove;
-        if (state.key != Node3.EMPTY_KEY && count >= 1) {
-            int block = node.child(position);
-            if (node.completeKey(position) && block != Node3.EMPTY_KEY) {
-                node.completeKey(position, false);
-                return this;
-            } else {
-                final int last = count - 1;
-                if (count >= 2 && position < last) {
-                    final boolean complete = node.completeKey(last);
-                    node.index(position, node.key(last), node.child(last)).completeKey(position, complete);
-                }
-                remove = count == 1 && !node.completeString();
-                node.keyCount(count - 1);
-            }
-        } else {
+        if (state.key == Node.EMPTY_KEY || count == 0) {
             node.completeString(false);
-            return this;
+            return;
         }
-        if (remove) {
+        if (count >= 1 && node.completeKey(position) && node.child(position) != Node.EMPTY_KEY) {
+            node.completeKey(position, false);
+            return;
+        }
+        if (count >= 1) {
+            final int last = count - 1;
+            if (count >= 2 && position < last) {
+                final boolean complete = node.completeKey(last);
+                node.index(position, node.key(last), node.child(last)).completeKey(position, complete);
+            }
+            node.keyCount(count - 1);
+        }
+        System.out.println("Node = " + node);
+        if (count == 1 && !node.completeString()) {
             child.wrap(node);
             while (count == 1) {
                 final MemorySegment memory = child.memorySegment();
@@ -109,32 +143,51 @@ public class RadixTree {
                 child.wrap(memory, segment, childBlock);
             }
         }
-        return this;
     }
 
+    /**
+     * Check emptiness
+     * @return true if this collection contains any strings
+     */
     public boolean isEmpty() {
         return size == 0;
     }
 
+    /**
+     * Number of elements in the collection
+     * @return the current number of elements
+     */
     public int size() {
         return size;
     }
 
+    /**
+     * Erase all elements in the collection
+     */
     public void clear() {
         size = 0;
         pool.close();
     }
 
-    public int allocatedBlocks() {
-        return allocated;
+    /**
+     * The number of allocated blocks in the collection.
+     * @return block count
+     */
+    protected int allocatedBlocks() {
+        return allocatedBlocks;
     }
 
+    /**
+     * Iterate of the nodes in the collection
+     * @param consumer node consumer
+     */
     protected void forEach(final Consumer<Node3> consumer) {
         if (root == null) {
             return;
         }
         parent.wrap(root);
 
+        final int[] indices = new int[256];
         indices[0] = parent.block();
         int remaining = 1;
         while (remaining >= 1) {
@@ -227,20 +280,20 @@ public class RadixTree {
         }
     }
 
-    private int splitNode(final int remainingString,
+    private int splitNode(final int remainingNode,
                           final byte key,
                           final int keyPos,
-                          final int remainingNode,
+                          final int remainingString,
                           final Node3 found,
                           final int mismatch) {
         int parentBlock = 0;
         final int count = found.keyCount();
-        if (remainingString != 1 || remainingNode != 1 || count != 0) {
+        if (remainingNode != 1 || remainingString != 1 || count != 0) {
             parentBlock = allocate(parent).block();
             parent.copyNode(found);
         }
-        if (remainingString >= 2) {
-            parent.copyString(mismatch + 1, remainingString - 1);
+        if (remainingNode >= 2) {
+            parent.copyString(mismatch + 1, remainingNode - 1);
         } else {
             if (count == 1) {
                 parent
@@ -254,8 +307,8 @@ public class RadixTree {
             .stringLength(mismatch).completeString(false)
             .keyCount(1)
             .index(0, found.string(mismatch), parentBlock)
-            .completeKey(0, remainingNode == 1);
-        return addKey(remainingNode, key, keyPos, found);
+            .completeKey(0, remainingString == 1);
+        return addKey(remainingString, key, keyPos, found);
     }
 
     private void addChild(final byte key, final int keyPos, final Node3 found) {
@@ -320,110 +373,115 @@ public class RadixTree {
         }
     }
 
-    /**
-     * Find the insertion point for a new string
-     * @param string UTF-8 bytes
-     * @param length string length
-     * @param context the insertion point data
-     * @return true when mismatch exists
-     */
-    private boolean mismatch(final byte[] string, final int length, final NodeState context) {
-        context.mismatch = 0;
-        context.position = 0;
-        context.key = -1;
-        context.keyPosition = -1;
-        context.type = TYPE_NULL;
-        context.found.wrap(root);
-        context.parent.wrap(root);
-        context.node.wrap(root);
-
-        final Node3 found = context.found;
-        int remaining = length;
-        boolean process = true;
-        int nodeLength = found.stringLength();
-        while (remaining >= 1) {
-            if (process) {
-                if (nodeLength >= 1) {
-                    context.mismatch = found.mismatch(string, context.position, length);
-                    if (context.mismatch == -1) {
-                        context.key = Node3.EMPTY_KEY;
-                        return false;
-                    }
-                    remaining -= context.mismatch;
-                    context.position += context.mismatch;
-                }
-                if (context.mismatch < nodeLength) {
-                    context.type = nodeLength >=1 && context.mismatch == 0 ? TYPE_NO_COMMON_PREFIX : TYPE_COMMON_PREFIX;
-                    return true;
-                }
-                process = false;
-            } else {
-                final int count = found.keyCount();
-                context.type = TYPE_MISSING_KEY;
-                if (count == 0) {
-                    return true;
-                }
-
-                final byte key = string[context.position];
-                final int foundPos = found.position(key);
-                context.keyPosition = foundPos;
-                if (foundPos == Node3.NOT_FOUND) {
-                    return true;
-                }
-
-                context.key = found.key(foundPos);
-                if (context.key != Node3.EMPTY_KEY) {  // empty keys do not advance the input string
-                    --remaining;
-                    ++context.position;
-                    if (remaining == 0) {
-                        return !context.found.completeKey(foundPos);
-                    }
-                    process = true;
-                }
-                context.parent.wrap(found);
-
-                final int childBlock = found.child(foundPos);
-                if (childBlock != 0) {
-                    found.wrap(found.memorySegment(), found.segment(), childBlock);
-                    if (count >= 2) {
-                        context.node.wrap(found);
-                    }
-                    nodeLength = found.stringLength();
-                } else {
-                    if (context.mismatch < context.position) {
-                        context.type = TYPE_COMMON_PREFIX_AND_KEY;
-                        return true;
-                    }
-                }
-            }
-        }
-        if (context.mismatch == nodeLength) {  // substring
-            context.type = TYPE_SUBSTRING;
-        }
-        return true;
-    }
-
     private Node3 allocate(final Node3 node) {
-        ++allocated;
+        ++allocatedBlocks;
         return pool.allocate(node);
     }
 
     private void free(final Node3 node) {
-        --allocated;
+        --allocatedBlocks;
         pool.free(node);
     }
 
     private static final class NodeState {
         int type;
-
-        Node3 found;
-        Node3 parent;
         int mismatch;
         int position;
 
         byte key;
         int keyPosition;
 
+        Node3 found;
+        Node3 parent;
         Node3 node;
+
+
+        NodeState(Node3 found, Node3 parent, Node3 node)
+        {
+            this.found = found;
+            this.parent = parent;
+            this.node = node;
+        }
+
+        /**
+         * Find the insertion point for a new string
+         * @param string UTF-8 bytes
+         * @param length string length
+         * @param root the insertion point data
+         * @return true when mismatch exists
+         */
+        private boolean mismatch(final Node root, final byte[] string, final int length) {
+            mismatch = 0;
+            position = 0;
+            key = -1;
+            keyPosition = -1;
+            type = TYPE_NULL;
+            found.wrap(root);
+            parent.wrap(root);
+            node.wrap(root);
+
+            int remaining = length;
+            boolean process = true;
+            int nodeLength = found.stringLength();
+            while (remaining >= 1) {
+                if (process) {
+                    if (nodeLength >= 1) {
+                        mismatch = found.mismatch(string, position, length);
+                        if (mismatch == -1) {
+                            key = Node3.EMPTY_KEY;
+                            return false;
+                        }
+                        remaining -= mismatch;
+                        position += mismatch;
+                    }
+                    if (mismatch < nodeLength) {
+                        type = nodeLength >=1 && mismatch == 0 ? TYPE_NO_COMMON_PREFIX : TYPE_COMMON_PREFIX;
+                        return true;
+                    }
+                    process = false;
+                } else {
+                    final int count = found.keyCount();
+                    type = TYPE_MISSING_KEY;
+                    if (count == 0) {
+                        return true;
+                    }
+
+                    final int foundPos = found.position(string[position]);
+                    keyPosition = foundPos;
+                    if (foundPos == Node3.NOT_FOUND) {
+                        return true;
+                    }
+
+                    key = found.key(foundPos);
+                    if (key != Node3.EMPTY_KEY) {  // empty keys do not advance the input string
+                        --remaining;
+                        ++position;
+                        if (remaining == 0) {
+                            return !found.completeKey(foundPos);
+                        }
+                        process = true;
+                    }
+                    parent.wrap(found);
+
+                    final int childBlock = found.child(foundPos);
+                    if (childBlock != 0) {
+                        found.wrap(found.memorySegment(), found.segment(), childBlock);
+                        if (count >= 2) {
+                            node.wrap(found);
+                        }
+                        nodeLength = found.stringLength();
+                    } else {
+                        if (mismatch < position) {
+                            type = TYPE_COMMON_PREFIX_AND_KEY;
+                            return true;
+                        }
+                    }
+                }
+            }
+            if (mismatch == nodeLength) {  // substring
+                type = TYPE_SUBSTRING;
+            }
+            return true;
+        }
     }
 }

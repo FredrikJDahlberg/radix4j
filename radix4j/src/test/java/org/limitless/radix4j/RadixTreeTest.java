@@ -1,12 +1,6 @@
 package org.limitless.radix4j;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-
-import javax.naming.OperationNotSupportedException;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -513,6 +507,10 @@ public class RadixTreeTest {
                 assertEquals(0, node.keyCount());
             }
         );
+
+        tree.remove("cat");
+        assertEquals(0, tree.size());
+        assertEquals(0, tree.allocatedBlocks());
     }
 
     @Test
@@ -571,6 +569,33 @@ public class RadixTreeTest {
                 assertTrue(node.completeKey(0));
             }
         );
+
+        tree.remove("cats");
+        tree.remove("pig");
+        assertEquals(0, tree.size());
+        assertEquals(0, tree.allocatedBlocks());
+    }
+
+    @Test
+    public void removeRootString11Keys6() {
+        RadixTree tree = new RadixTree();
+        addContains(tree, "abcdefghij-0");
+        addContains(tree, "abcdefghij-1");
+        addContains(tree, "abcdefghij-2");
+        addContains(tree, "abcdefghij-3");
+        addContains(tree, "abcdefghij-4");
+        addContains(tree, "abcdefghij-5");
+
+        tree.remove("abcdefghij-1");
+        tree.remove("abcdefghij-3");
+        tree.remove("abcdefghij-2");
+        tree.remove("abcdefghij-5");
+        tree.remove("abcdefghij-4");
+        tree.remove("abcdefghij-0");
+        tree.forEach(System.out::println);
+
+        assertEquals(0, tree.allocatedBlocks());
+        assertTrue(tree.isEmpty());
     }
 
     @Test
@@ -589,8 +614,12 @@ public class RadixTreeTest {
 
         tree.remove("cat");
         assertFalse(tree.contains("cat"));
+
         assertTrue(tree.contains("pig"));
         assertEquals(1, tree.size());
+        tree.remove("pig");
+        assertEquals(0, tree.size());
+        assertEquals(0, tree.allocatedBlocks());
     }
 
     @Test
@@ -606,9 +635,12 @@ public class RadixTreeTest {
         for (int i = size - 1; i >= 0; --i) {
             final String string = strings[i];
             assertTrue(tree.contains(string), "contains: " + string);
+            System.out.println("remove=" + string);
             tree.remove(string);
             assertFalse(tree.contains(string), "not contains: " + string);
         }
+        tree.forEach(System.out::println);
+        assertEquals(0, tree.allocatedBlocks());
         assertTrue(tree.isEmpty(), "empty");
     }
 
