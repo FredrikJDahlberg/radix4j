@@ -667,7 +667,6 @@ public class RadixTreeTest {
         final var tree = new RadixTree();
         addContains(tree, "a");
         addContains(tree, "pig");
-        tree.forEach(System.out::println);
         new Checker().check(tree,
             node -> {
                 assertEquals(0, node.stringLength());
@@ -687,7 +686,7 @@ public class RadixTreeTest {
         assertTrue(tree.remove("a"));
     }
 
-        @Test
+    @Test
     public void removeBasics() {
         final var tree = new RadixTree();
         addContains(tree, "cat");
@@ -709,6 +708,19 @@ public class RadixTreeTest {
         assertTrue(tree.remove("pin"));
         assertTrue(tree.remove("crow"));
         assertEmpty(tree);
+    }
+
+    @Test
+    public void addParentMissingCompleteKey() {
+        final var tree = new RadixTree();
+        addContains(tree, "1234567890-1");
+        addContains(tree, "1234567890-10");
+        assertTrue(tree.contains("1234567890-1"));
+
+        addContains(tree, "1234567890-11");
+        assertTrue(tree.contains("1234567890-1"));
+
+        tree.forEach(System.out::println);
     }
 
     private static void assertEmpty(final RadixTree tree)
