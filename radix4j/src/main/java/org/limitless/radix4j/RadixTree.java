@@ -10,11 +10,12 @@ import java.util.function.Consumer;
 public class RadixTree {
 
     // FIXME: add segment to key index (more than one segment)
+
     private static final String BLOCKS_PER_SEGMENT_PROP = "radix4j.blocks.per.segment";
     private static final int BLOCKS_PER_SEGMENT = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 128 * 1024);
 
     private static final String INITIAL_PATH_STACK_SIZE_PROP = "radix4j.initial.path.stack.size";
-    private static final int INITIAL_STACK_SIZE = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 32);
+    private static final int INITIAL_STACK_SIZE = Integer.getInteger(INITIAL_PATH_STACK_SIZE_PROP, 32);
 
     private final BlockPool<Node3> pool;
     private final Node3 root;
