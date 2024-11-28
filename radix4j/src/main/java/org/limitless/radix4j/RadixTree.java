@@ -406,16 +406,16 @@ public class RadixTree {
             mismatchType = TYPE_NULL;
             found.wrap(root);
             parent.wrap(root);
-            pathCount = 1;
             pathBlocks[0] = root.block();
             pathPositions[0] = 0;
+            pathCount = 1;
 
-            boolean process = true;
+            boolean processString = true;
             int remaining = length;
             int nodeLength = found.stringLength();
             while (remaining >= 1) {
                 final int count = found.keyCount();
-                if (process) {
+                if (processString) {
                     if (nodeLength >= 1) {
                         mismatch = found.mismatch(string, position, length);
                         if (mismatch == -1) {
@@ -429,16 +429,15 @@ public class RadixTree {
                         mismatchType = nodeLength >=1 && mismatch == 0 ? TYPE_NO_COMMON_PREFIX : TYPE_COMMON_PREFIX;
                         return true;
                     }
-                    process = false;
+                    processString = false;
                 } else {
                     mismatchType = TYPE_MISSING_KEY;
-                    if (count == 0) {
-                        return true;
+                    int foundPos = Node3.NOT_FOUND;
+                    if (count >= 1) {
+                        foundPos = found.position(string[position]);
+                        key = found.key(foundPos);
+                        keyPos = foundPos;
                     }
-
-                    final int foundPos = found.position(string[position]);
-                    key = found.key(foundPos);
-                    keyPos = foundPos;
                     if (foundPos == Node3.NOT_FOUND) {
                         return true;
                     }
@@ -450,20 +449,14 @@ public class RadixTree {
                         if (remaining == 0) {
                             return !found.completeKey(foundPos);
                         }
-                        process = true;
+                        processString = true;
                     }
                     parent.wrap(found);
 
                     final int childBlock = found.child(foundPos);
                     if (childBlock != 0) {
                         if (withPath) {
-                            if (pathBlocks.length == pathCount + 1) {
-                                pathBlocks = Arrays.copyOf(pathBlocks, pathBlocks.length * 2);
-                                pathPositions = Arrays.copyOf(pathPositions, pathPositions.length * 2);
-                            }
-                            pathBlocks[pathCount] = childBlock;
-                            pathPositions[pathCount] = foundPos;
-                            ++pathCount;
+                            updatePath(childBlock, foundPos);
                         }
                         found.wrap(found.memorySegment(), found.segment(), childBlock);
                         nodeLength = found.stringLength();
@@ -480,6 +473,16 @@ public class RadixTree {
             }
             keyPos = -1;
             return true;
+        }
+
+        void updatePath(int block, int keyPosition) {
+            if (pathBlocks.length == pathCount + 1) {
+                pathBlocks = Arrays.copyOf(pathBlocks, pathBlocks.length * 2);
+                pathPositions = Arrays.copyOf(pathPositions, pathPositions.length * 2);
+            }
+            pathBlocks[pathCount] = block;
+            pathPositions[pathCount] = keyPosition;
+            ++pathCount;
         }
     }
 }
