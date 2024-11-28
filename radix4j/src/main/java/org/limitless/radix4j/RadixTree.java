@@ -13,6 +13,9 @@ public class RadixTree {
     private static final String BLOCKS_PER_SEGMENT_PROP = "radix4j.blocks.per.segment";
     private static final int BLOCKS_PER_SEGMENT = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 128 * 1024);
 
+    private static final String INITIAL_PATH_STACK_SIZE_PROP = "radix4j.initial.path.stack.size";
+    private static final int INITIAL_STACK_SIZE = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 32);
+
     private final BlockPool<Node3> pool;
     private final Node3 root;
     private final Node3 child;
@@ -91,17 +94,17 @@ public class RadixTree {
      * Remove string form collection
      * @param string value
      */
-    public void remove(final String string) {
-        remove(string.getBytes());
+    public boolean remove(final String string) {
+        return remove(string.getBytes());
     }
 
     /**
      * Remove string form collection
      * @param string value
      */
-    public void remove(final byte[] string) {
+    public boolean remove(final byte[] string) {
         if (isEmpty() || state.mismatch(root, string, string.length, true)) {
-            return;
+            return false;
         }
         --size;
 
@@ -111,20 +114,29 @@ public class RadixTree {
         if (state.key == Node3.EMPTY_KEY) {
             found.completeString(false);
         } else {
-            found.removeKey(state.keyPos);
+            final int position = state.keyPos;
+            final int block = found.child(position);
+            if (found.completeKey(position)) {
+                found.completeKey(position, false);
+            }
+            if (block == Node3.EMPTY_BLOCK) {
+                found.removeKey(position);
+            }
         }
         if (found.keyCount() == 0 && !found.completeString()) {
             free(found);
 
             for (int i = state.pathCount - 2; i >= 0; --i) {
                 found.wrap(memory, segment, state.pathBlocks[i]);
-                found.removeKey(state.pathPositions[i + 1]);
+                final int position = state.pathPositions[i + 1];
+                found.removeKey(position);
                 if (found.keyCount() >= 1 || found.completeString()) {
                     break;
                 }
                 free(found);
             }
         }
+        return true;
     }
 
     /**
@@ -249,9 +261,8 @@ public class RadixTree {
             parent
                 .stringLength(0).completeString(false)
                 .keyCount(2)
-                .index(0, foundKey, foundBlock)
-                .index(1, key, childBlock)
-                .completeKey(1, remainingString == 1);
+                .index(0, foundKey, foundBlock) // .completeKey(0, remainingNode == 1)
+                .index(1, key, childBlock).completeKey(1, remainingString == 1);
         }
         if (foundBlock == 0) {
             free(node);
@@ -298,7 +309,7 @@ public class RadixTree {
     private void addChild(final byte key, final int keyPos, final Node3 found) {
         final int childBlock = allocate(child).block();
         child.keyCount(0).stringLength(0);
-        found.index(keyPos, key, childBlock);
+        found.index(keyPos, key, childBlock).completeKey(keyPos, true);
         found.wrap(child);
     }
 
@@ -382,8 +393,8 @@ public class RadixTree {
         Node3 found;
         Node3 parent;
 
-        int[] pathBlocks = new int[64];
-        int[] pathPositions = new int[64];
+        int[] pathBlocks = new int[INITIAL_STACK_SIZE];
+        int[] pathPositions = new int[INITIAL_STACK_SIZE];
         int pathCount;
 
         NodeState(final Node3 found, final Node3 parent) {

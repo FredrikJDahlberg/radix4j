@@ -130,7 +130,8 @@ public class Node3 extends Node {
     public Node3 removeKey(int position) {
         final int newCount = keyCount() - 1;
         if (position != newCount) {
-            index(position, this.key(newCount), child(newCount)).completeKey(position, completeKey(newCount));
+            index(position, this.key(newCount), child(newCount))
+                .completeKey(position, completeKey(newCount));
         }
         keyCount(newCount);
         return this;

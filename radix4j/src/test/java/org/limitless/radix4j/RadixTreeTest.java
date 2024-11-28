@@ -457,16 +457,19 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void fullSegment() {
+    public void removeCompleteKeyWithChildren() {
         final var tree = new RadixTree();
-        int s = 0;
-        for (int i = 0; i < 100_000; ++i) {
-            String str = "12345678901234567890_" + i;
-            s += 28; // str.length() + 24;
-            addContains(tree, str);
-        }
-        int x = 16 * 128 * 1024; // tree.blocks() * 16;
-        System.out.println("allocated = " + (x / 1024) + " MB " + (s / 1024) + " MB " + ((double) x / s));
+        assertTrue(tree.add("12345678901234567890_1"));
+        assertTrue(tree.add("12345678901234567890_2"));
+        assertTrue(tree.add("12345678901234567890_10"));
+
+        assertTrue(tree.contains("12345678901234567890_1"));
+        assertTrue(tree.contains("12345678901234567890_2"));
+        assertTrue(tree.contains("12345678901234567890_10"));
+
+        assertTrue(tree.remove("12345678901234567890_1"));
+        assertTrue(tree.remove("12345678901234567890_2"));
+        assertTrue(tree.remove("12345678901234567890_10"));
     }
 
     @Test
@@ -476,13 +479,14 @@ public class RadixTreeTest {
         addContains(tree, "cats");
         assertEquals(2, tree.size());
 
-        tree.remove("cat");
+        assertTrue(tree.remove("cat"));
         assertFalse(tree.contains("cat"));
         assertTrue(tree.contains("cats"));
 
         assertEquals(1, tree.size());
 
-        tree.remove("cats");
+        assertTrue(tree.remove("cats"));
+        assertFalse(tree.remove("cats"));
         assertFalse(tree.contains("cats"));
 
         assertEquals(0, tree.size());
@@ -496,7 +500,7 @@ public class RadixTreeTest {
         addContains(tree, "cats");
         assertEquals(2, tree.size());
 
-        tree.remove("cats");
+        assertTrue(tree.remove("cats"));
         assertFalse(tree.contains("cats"));
         assertTrue(tree.contains("cat"));
         assertEquals(1, tree.size());
@@ -509,7 +513,7 @@ public class RadixTreeTest {
             }
         );
 
-        tree.remove("cat");
+        assertTrue(tree.remove("cat"));
         assertEquals(0, tree.size());
         assertEquals(0, tree.allocatedBlocks());
     }
@@ -521,7 +525,7 @@ public class RadixTreeTest {
         addContains(tree, "cats");
         assertEquals(2, tree.size());
 
-        tree.remove("cat");
+        assertTrue(tree.remove("cat"));
         assertTrue(tree.contains("cats"));
         assertEquals(1, tree.size());
 
@@ -544,7 +548,7 @@ public class RadixTreeTest {
         addContains(tree, "pig");
         assertEquals(3, tree.size());
 
-        tree.remove("cat");
+        assertTrue(tree.remove("cat"));
         assertTrue(tree.contains("cats"));
         assertTrue(tree.contains("pig"));
         assertEquals(2, tree.size());
@@ -571,8 +575,8 @@ public class RadixTreeTest {
             }
         );
 
-        tree.remove("cats");
-        tree.remove("pig");
+        assertTrue(tree.remove("cats"));
+        assertTrue(tree.remove("pig"));
 
         assertEmpty(tree);
     }
@@ -587,17 +591,17 @@ public class RadixTreeTest {
         addContains(tree, "abcdefghij-4");
         addContains(tree, "abcdefghij-5");
 
-        tree.remove("abcdefghij-0");
-        tree.remove("abcdefghij-1");
-        tree.remove("abcdefghij-2");
+        assertTrue(tree.remove("abcdefghij-0"));
+        assertTrue(tree.remove("abcdefghij-1"));
+        assertTrue(tree.remove("abcdefghij-2"));
         assertFalse(tree.contains("abcdefghij-0"));
         assertFalse(tree.contains("abcdefghij-1"));
         assertFalse(tree.contains("abcdefghij-2"));
-        tree.remove("abcdefghij-3");
+        assertTrue(tree.remove("abcdefghij-3"));
         assertFalse(tree.contains("abcdefghij-3"));
-        tree.remove("abcdefghij-4");
+        assertTrue(tree.remove("abcdefghij-4"));
         assertFalse(tree.contains("abcdefghij-4"));
-        tree.remove("abcdefghij-5");
+        assertTrue(tree.remove("abcdefghij-5"));
         assertFalse(tree.contains("abcdefghij-5"));
 
         assertEmpty(tree);
@@ -610,11 +614,11 @@ public class RadixTreeTest {
         addContains(tree, "pig");
         assertEquals(2, tree.size());
 
-        tree.remove("cat");
+        assertTrue(tree.remove("cat"));
         assertFalse(tree.contains("cat"));
         assertTrue(tree.contains("pig"));
 
-        tree.remove("pig");
+        assertTrue(tree.remove("pig"));
         assertFalse(tree.contains("pig"));
         assertEmpty(tree);
     }
@@ -627,18 +631,19 @@ public class RadixTreeTest {
         addContains(tree, "pig");
         assertEquals(3, tree.size());
 
-        tree.remove("cats");
+        assertTrue(tree.remove("cats"));
         assertFalse(tree.contains("cats"));
         assertTrue(tree.contains("cat"));
         assertTrue(tree.contains("pig"));
         assertEquals(2, tree.size());
 
-        tree.remove("cat");
+        assertTrue(tree.remove("cat"));
         assertFalse(tree.contains("cat"));
         assertTrue(tree.contains("pig"));
         assertEquals(1, tree.size());
 
-        tree.remove("pig");
+        assertTrue(tree.remove("pig"));
+        assertFalse(tree.remove("pig"));
 
         assertEmpty(tree);
     }
@@ -647,11 +652,11 @@ public class RadixTreeTest {
     public void removeRoot() {
         final var tree = new RadixTree();
         tree.add("monkey");
-        tree.remove("monkey");
+        assertTrue(tree.remove("monkey"));
         assertTrue(tree.isEmpty());
         assertEquals(0, tree.size());
         assertEmpty(tree);
-        tree.add("cat");
+        assertTrue(tree.add("cat"));
         assertTrue(tree.contains("cat"));
         assertTrue(!tree.isEmpty());
         assertEquals(1, tree.size());
@@ -665,17 +670,17 @@ public class RadixTreeTest {
             addContains(tree, string);
         }
 
-        tree.remove("cat");
+        assertTrue(tree.remove("cat"));
         assertFalse(tree.contains("cat"));
         assertTrue(tree.contains("cats"));
 
-        tree.remove("cats");
+        assertTrue(tree.remove("cats"));
         assertFalse(tree.contains("cats"));
 
-        tree.remove("cow");
-        tree.remove("pig");
-        tree.remove("pin");
-        tree.remove("crow");
+        assertTrue(tree.remove("cow"));
+        assertTrue(tree.remove("pig"));
+        assertTrue(tree.remove("pin"));
+        assertTrue(tree.remove("crow"));
         assertEmpty(tree);
     }
 
@@ -710,6 +715,13 @@ public class RadixTreeTest {
         }
         assertEquals(empty, size == 0);
         assertEquals(size + 1, tree.size());
+    }
+
+    private static void removeContains(final RadixTree tree, final String string) {
+        final int size = tree.size();
+        assertTrue(tree.remove(string), string);
+        assertFalse(tree.contains(string));
+        assertEquals(size - 1, tree.size());
     }
 
     private static String getString(Node3 node) {
