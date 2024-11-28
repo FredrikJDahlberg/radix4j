@@ -197,20 +197,14 @@ public class Node3 extends Node {
             return 0;
         }
 
-        byte key2 = EMPTY_KEY;
-        if (count >= 2) {
-            key2 = key(1);
-            if (key2 == key) {
-                return 1;
-            }
+        final byte key2 = count >= 2 ? key(1) : EMPTY_KEY;
+        if (key2 == key) {
+            return 1;
         }
 
-        byte key3 = EMPTY_KEY;
-        if (count >= 3) {
-            key3 = key(2);
-            if (key3 == key) {
-                return 2;
-            }
+        final byte key3 = count >= 3 ? key(2) : EMPTY_KEY;
+        if (key3 == key) {
+            return 2;
         }
 
         if (key1 == EMPTY_KEY) {

@@ -273,15 +273,6 @@ public class RadixTreeTest {
                 assertFalse(node.completeKey(1));
             },
             node -> {
-                assertEquals("i", getString(node));
-                assertFalse(node.completeString());
-                assertEquals(2, node.keyCount());
-                assertEquals('g', (char) node.key(0));
-                assertEquals('n', (char) node.key(1));
-                assertTrue(node.completeKey(0));
-                assertTrue(node.completeKey(1));
-            },
-            node -> {
                 assertEquals(0, node.stringLength());
                 assertEquals(3, node.keyCount());
                 assertEquals('a', (char) node.key(0));
@@ -292,19 +283,28 @@ public class RadixTreeTest {
                 assertFalse(node.completeKey(2));
             },
             node -> {
-                assertEquals("ow", getString(node));
+                assertEquals("t", getString(node));
+                assertEquals(1, node.keyCount());
+                assertEquals('s', node.key(0));
                 assertTrue(node.completeString());
+                assertTrue(node.completeKey(0));
             },
             node -> {
                 assertEquals("w", getString(node));
                 assertTrue(node.completeString());
             },
             node -> {
-                assertEquals("t", getString(node));
-                assertEquals(1, node.keyCount());
-                assertEquals('s', node.key(0));
+                assertEquals("ow", getString(node));
                 assertTrue(node.completeString());
+            },
+            node -> {
+                assertEquals("i", getString(node));
+                assertFalse(node.completeString());
+                assertEquals(2, node.keyCount());
+                assertEquals('g', (char) node.key(0));
+                assertEquals('n', (char) node.key(1));
                 assertTrue(node.completeKey(0));
+                assertTrue(node.completeKey(1));
             }
         );
     }
@@ -485,7 +485,6 @@ public class RadixTreeTest {
         tree.remove("cats");
         assertFalse(tree.contains("cats"));
 
-        tree.forEach(System.out::println);
         assertEquals(0, tree.size());
         assertEquals(0, tree.allocatedBlocks());
     }
@@ -589,10 +588,10 @@ public class RadixTreeTest {
         addContains(tree, "abcdefghij-5");
 
         tree.remove("abcdefghij-0");
-        assertFalse(tree.contains("abcdefghij-0"));
         tree.remove("abcdefghij-1");
-        assertFalse(tree.contains("abcdefghij-1"));
         tree.remove("abcdefghij-2");
+        assertFalse(tree.contains("abcdefghij-0"));
+        assertFalse(tree.contains("abcdefghij-1"));
         assertFalse(tree.contains("abcdefghij-2"));
         tree.remove("abcdefghij-3");
         assertFalse(tree.contains("abcdefghij-3"));
@@ -634,9 +633,7 @@ public class RadixTreeTest {
         assertTrue(tree.contains("pig"));
         assertEquals(2, tree.size());
 
-        print("before", tree);
         tree.remove("cat");
-        print("after", tree);
         assertFalse(tree.contains("cat"));
         assertTrue(tree.contains("pig"));
         assertEquals(1, tree.size());

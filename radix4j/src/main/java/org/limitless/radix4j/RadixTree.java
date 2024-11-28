@@ -10,7 +10,6 @@ import java.util.function.Consumer;
 public class RadixTree {
 
     // FIXME: add segment to key index (more than one segment)
-    // FIXME: merge nodes when removing keys?
     private static final String BLOCKS_PER_SEGMENT_PROP = "radix4j.blocks.per.segment";
     private static final int BLOCKS_PER_SEGMENT = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 128 * 1024);
 
@@ -250,8 +249,9 @@ public class RadixTree {
             parent
                 .stringLength(0).completeString(false)
                 .keyCount(2)
-                .index(0, foundKey, foundBlock).completeKey(0, remainingNode == 1)
-                .index(1, key, childBlock).completeKey(1, remainingString == 1);
+                .index(0, foundKey, foundBlock)
+                .index(1, key, childBlock)
+                .completeKey(1, remainingString == 1);
         }
         if (foundBlock == 0) {
             free(node);
