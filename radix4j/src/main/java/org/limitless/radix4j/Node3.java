@@ -9,11 +9,11 @@ public class Node3 extends Node {
     protected static final int INDEX_LENGTH_BITS = 24;
 
     // index layout
-    protected static final int KEY_INCLUDED_OFFSET_BITS = 0;
-    protected static final int KEY_INCLUDED_LENGTH_BITS = 1;
-    protected static final int KEY_VALUE_OFFSET_BITS = KEY_INCLUDED_OFFSET_BITS + KEY_INCLUDED_LENGTH_BITS;
+    protected static final int KEY_COMPLETE_OFFSET_BITS = 0;
+    protected static final int KEY_COMPLETE_LENGTH_BITS = 1;
+    protected static final int KEY_VALUE_OFFSET_BITS = KEY_COMPLETE_OFFSET_BITS + KEY_COMPLETE_LENGTH_BITS;
     protected static final int KEY_VALUE_LENGTH_BITS = 7;
-    protected static final int KEY_LENGTH_BITS = KEY_INCLUDED_LENGTH_BITS + KEY_VALUE_LENGTH_BITS;
+    protected static final int KEY_LENGTH_BITS = KEY_COMPLETE_LENGTH_BITS + KEY_VALUE_LENGTH_BITS;
 
     //
     protected static final int KEYS_OFFSET_BITS = KEY_COUNT_OFFSET_BITS + KEY_COUNT_LENGTH_BITS;
@@ -26,8 +26,8 @@ public class Node3 extends Node {
     protected static final int SIZE = STRING_OFFSET_BITS + STRING_LENGTH_BITS;
 
     // masks
-    protected static final int STRING_INCLUDED_MASK = (0xff >>> (Byte.SIZE - STRING_COMPLETE_LENGTH_BITS)) << STRING_COMPLETE_OFFSET_BITS;
-    protected static final int KEY_INCLUDED_MASK = (0xff >>> (Byte.SIZE - KEY_INCLUDED_LENGTH_BITS)) << KEY_INCLUDED_OFFSET_BITS;
+    protected static final int STRING_COMPLETE_MASK = (0xff >>> (Byte.SIZE - STRING_COMPLETE_LENGTH_BITS)) << STRING_COMPLETE_OFFSET_BITS;
+    protected static final int KEY_COMPLETE_MASK = (0xff >>> (Byte.SIZE - KEY_COMPLETE_LENGTH_BITS)) << KEY_COMPLETE_OFFSET_BITS;
     protected static final int STRING_LENGTH_MASK = (0xff >>> (Byte.SIZE - STRLEN_LENGTH_BITS)) << STRLEN_OFFSET_BITS;
     protected static final int KEY_COUNT_MASK = (0xff >>> (Byte.SIZE - KEY_COUNT_LENGTH_BITS)) << KEY_COUNT_OFFSET_BITS;
     protected static final int KEY_VALUE_MASK = (0xff >>> (Byte.SIZE - KEY_VALUE_LENGTH_BITS)) << KEY_VALUE_OFFSET_BITS;
@@ -56,24 +56,24 @@ public class Node3 extends Node {
     }
 
     public boolean completeKey(int position) {
-        return (nativeByte(KEYS_OFFSET + position) & KEY_INCLUDED_MASK) != 0;
+        return (nativeByte(KEYS_OFFSET + position) & KEY_COMPLETE_MASK) != 0;
     }
 
     public Node3 completeKey(int position, boolean value) {
         int included = value ? 1 : 0;
         int location = KEYS_OFFSET + position;
-        nativeByte(location, (byte) ((nativeByte(KEYS_OFFSET + position) & ~KEY_INCLUDED_MASK) |
-            (included << KEY_INCLUDED_OFFSET_BITS)));
+        nativeByte(location, (byte) ((nativeByte(KEYS_OFFSET + position) & ~KEY_COMPLETE_MASK) |
+            (included << KEY_COMPLETE_OFFSET_BITS)));
         return this;
     }
 
     public boolean completeString() {
-        return (nativeByte(FLAGS_OFFSET) & STRING_INCLUDED_MASK) != 0;
+        return (nativeByte(FLAGS_OFFSET) & STRING_COMPLETE_MASK) != 0;
     }
 
     public Node3 completeString(boolean value) {
         int included = value ? 1 : 0;
-        flags((byte) ((flags() & ~STRING_INCLUDED_MASK) | (included << STRING_COMPLETE_OFFSET_BITS)));
+        flags((byte) ((flags() & ~STRING_COMPLETE_MASK) | (included << STRING_COMPLETE_OFFSET_BITS)));
         return this;
     }
 
@@ -124,6 +124,15 @@ public class Node3 extends Node {
 
     public Node3 key(int position, byte value) {
         nativeByte(KEYS_OFFSET + position, (byte) (value << KEY_VALUE_OFFSET_BITS));
+        return this;
+    }
+
+    public Node3 removeKey(int position) {
+        final int newCount = keyCount() - 1;
+        if (position != newCount) {
+            index(position, this.key(newCount), child(newCount)).completeKey(position, completeKey(newCount));
+        }
+        keyCount(newCount);
         return this;
     }
 
