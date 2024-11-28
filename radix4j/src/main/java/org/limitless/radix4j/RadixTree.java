@@ -253,25 +253,25 @@ public class RadixTree {
             context.parent.index(context.keyPos, context.parent.key(context.keyPos), parent.block());
         }
 
-        final Node3 node = context.found;
-        final int foundBlock = remainingNode == 1 && node.keyCount() == 0 ? 0 : node.block();
+        final Node3 found = context.found;
+        final int foundBlock = remainingNode == 1 && found.keyCount() == 0 ? 0 : found.block();
         final int childBlock = remainingString >= 2 ? allocate(child).block() : 0;
         if (remainingNode >= 1) {
             final byte foundKey = context.found.string(0);
             parent
                 .stringLength(0).completeString(false)
                 .keyCount(2)
-                .index(0, foundKey, foundBlock) // .completeKey(0, remainingNode == 1)
+                .index(0, foundKey, foundBlock).completeKey(0, foundBlock == 0)
                 .index(1, key, childBlock).completeKey(1, remainingString == 1);
         }
         if (foundBlock == 0) {
-            free(node);
-            node.wrap(parent);
+            free(found);
+            found.wrap(parent);
         } else {
-            node.copyString(1, remainingNode - 1);
+            found.copyString(1, remainingNode - 1);
         }
         if (childBlock != 0) {
-            node.wrap(child);
+            found.wrap(child);
         }
     }
 

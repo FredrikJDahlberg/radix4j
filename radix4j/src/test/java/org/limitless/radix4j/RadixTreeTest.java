@@ -663,12 +663,39 @@ public class RadixTreeTest {
     }
 
     @Test
+    public void addParentWithMergeAndRemove() {
+        final var tree = new RadixTree();
+        addContains(tree, "a");
+        addContains(tree, "pig");
+        tree.forEach(System.out::println);
+        new Checker().check(tree,
+            node -> {
+                assertEquals(0, node.stringLength());
+                assertEquals(2, node.keyCount());
+                assertEquals('a', (char) node.key(0));
+                assertTrue(node.completeKey(0));
+                assertEquals('p', (char) node.key(1));
+                assertFalse(node.completeKey(1));
+            },
+            node -> {
+                assertEquals("ig", getString(node));
+                assertTrue(node.completeString());
+                assertEquals(0, node.keyCount());
+            }
+        );
+        assertTrue(tree.remove("pig"));
+        assertTrue(tree.remove("a"));
+    }
+
+        @Test
     public void removeBasics() {
         final var tree = new RadixTree();
-        String[] strings = {"cat", "cats", "cow", "pig", "pin", "crow"};
-        for (String string : strings) {
-            addContains(tree, string);
-        }
+        addContains(tree, "cat");
+        addContains(tree, "cats");
+        addContains(tree, "cow");
+        addContains(tree, "pin");
+        addContains(tree, "pig");
+        addContains(tree, "crow");
 
         assertTrue(tree.remove("cat"));
         assertFalse(tree.contains("cat"));
