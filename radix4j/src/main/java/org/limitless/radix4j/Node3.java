@@ -191,26 +191,40 @@ public class Node3 extends Node {
         if (count == 0) {
             return NOT_FOUND;
         }
-        byte key1 = key(0);
-        if (key1 == key || key1 == EMPTY_KEY) {
+
+        final byte key1 = key(0);
+        if (key1 == key) {
             return 0;
         }
-        if (count == 1) {
-            return NOT_FOUND;
+
+        byte key2 = EMPTY_KEY;
+        if (count >= 2) {
+            key2 = key(1);
+            if (key2 == key) {
+                return 1;
+            }
         }
-        byte key2 = key(1);
-        if (key2 == key || key2 == EMPTY_KEY) {
+
+        byte key3 = EMPTY_KEY;
+        if (count >= 3) {
+            key3 = key(2);
+            if (key3 == key) {
+                return 2;
+            }
+        }
+
+        if (key1 == EMPTY_KEY) {
+            return 0;
+        }
+        if (count >= 2 && key2 == EMPTY_KEY) {
             return 1;
         }
-        if (count == 2) {
-            return NOT_FOUND;
-        }
-        byte key3 = key(2);
-        if (key3 == key || key3 == EMPTY_KEY) {
+        if (count >= 3 && key3 == EMPTY_KEY) {
             return 2;
         }
         return NOT_FOUND;
     }
+
 
     public StringBuilder append(StringBuilder builder) {
         builder.setLength(0);
