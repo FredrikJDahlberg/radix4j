@@ -34,7 +34,12 @@ public class RadixTree {
     private static final int TYPE_MISSING_KEY = 5;
 
     public RadixTree() {
-        pool = new BlockPool.Builder<>(Arena.ofShared(), Node3.class).blocksPerSegment(BLOCKS_PER_SEGMENT).build();
+        this(BLOCKS_PER_SEGMENT);
+    }
+
+    public RadixTree(final int blockPerSegment) {
+        pool = new BlockPool.Builder<>(Arena.ofShared(), Node3.class)
+            .blocksPerSegment(blockPerSegment).build();
         parent = pool.allocate();
         root = pool.allocate();
         child = pool.allocate();

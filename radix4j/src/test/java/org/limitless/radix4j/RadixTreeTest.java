@@ -1,5 +1,6 @@
 package org.limitless.radix4j;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -729,6 +730,31 @@ public class RadixTreeTest {
         assertTrue(tree.contains("1234567890-1"));
     }
 
+    @Test
+    public void treeWithOneSegment() {
+        final var tree = new RadixTree();
+        addStrings(tree, 250_000);
+    }
+
+    @Test
+    public void treeWithBlocksPerSegmentProperty() {
+        final var tree = new RadixTree(1024 * 1024);
+        addStrings(tree, 1_000_000);
+    }
+
+    private void addStrings(final RadixTree tree, final int count) {
+        for (int i = 0; i < count; ++i) {
+            assertTrue(tree.add("abcdefghijklmnop-" + i));
+        }
+        for (int i = 0; i < count; ++i) {
+            assertTrue(tree.contains("abcdefghijklmnop-" + i));
+        }
+        for (int i = 0; i < count; ++i) {
+            assertTrue(tree.remove("abcdefghijklmnop-" + i));
+        }
+        assertEmpty(tree);
+    }
+
     private static void assertEmpty(final RadixTree tree)
     {
         assertTrue(tree.isEmpty());
@@ -747,16 +773,13 @@ public class RadixTreeTest {
     private static void addContains(final RadixTree tree, final String string) {
         final int size = tree.size();
         final boolean empty = tree.isEmpty();
-        final boolean failedAdd = !tree.add(string);
-        final boolean failedContains = !tree.contains(string);
-        if (failedAdd || failedContains) {
+        if (!tree.add(string)) {
             tree.forEach(System.out::println);
+            fail("failed add: string =  " + string);
         }
-        if (failedAdd) {
-            fail("add " + string);
-        }
-        if (failedContains) {
-            fail("contains " + string);
+        if (!tree.contains(string)) {
+            fail("failed contains: string = " + string);
+            tree.forEach(System.out::println);
         }
         assertEquals(empty, size == 0);
         assertEquals(size + 1, tree.size());

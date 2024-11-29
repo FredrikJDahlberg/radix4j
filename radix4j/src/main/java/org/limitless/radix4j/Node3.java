@@ -216,7 +216,6 @@ public class Node3 extends Node {
         return NOT_FOUND;
     }
 
-
     public StringBuilder append(StringBuilder builder) {
         builder.setLength(0);
         builder.append("{Node").append(segment()).append('#').append(block()).append(", ");
