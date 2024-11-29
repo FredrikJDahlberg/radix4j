@@ -49,10 +49,9 @@ public class Node3 extends Node {
         return this;
     }
 
-    public Node3 copyNode(final Node3 srcNode) {
+    public void copyNode(final Node3 srcNode) {
         MemorySegment.copy(srcNode.memorySegment(), srcNode.fieldOffset(0),
             this.memorySegment(), this.fieldOffset(0), BYTES);
-        return this;
     }
 
     public boolean completeKey(int position) {
@@ -77,14 +76,13 @@ public class Node3 extends Node {
         return this;
     }
 
-    protected Node3 copyString(final int position, final int length) {
+    protected void copyString(final int position, final int length) {
         if (length >= 1) {
             long stringOffset = fieldOffset(STRING_OFFSET);
             MemorySegment.copy(memorySegment(), stringOffset + position,
                 memorySegment(), stringOffset, length);
         }
         stringLength(length);
-        return this;
     }
 
     protected Node3 string(byte[] string, int position, int stringLength) {
@@ -122,19 +120,17 @@ public class Node3 extends Node {
         return (byte) ((nativeByte(KEYS_OFFSET + position) & KEY_VALUE_MASK) >>> KEY_VALUE_OFFSET_BITS);
     }
 
-    public Node3 key(int position, byte value) {
+    public void key(int position, byte value) {
         nativeByte(KEYS_OFFSET + position, (byte) (value << KEY_VALUE_OFFSET_BITS));
-        return this;
     }
 
-    public Node3 removeKey(int position) {
+    public void removeKey(int position) {
         final int newCount = keyCount() - 1;
         if (position != newCount) {
             index(position, this.key(newCount), child(newCount))
                 .completeKey(position, completeKey(newCount));
         }
         keyCount(newCount);
-        return this;
     }
 
     public int child(int position) {

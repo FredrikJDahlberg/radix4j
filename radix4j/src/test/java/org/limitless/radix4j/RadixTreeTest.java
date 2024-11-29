@@ -704,9 +704,18 @@ public class RadixTreeTest {
         assertFalse(tree.contains("cats"));
 
         assertTrue(tree.remove("cow"));
+        assertFalse(tree.contains("cow"));
+        assertTrue(tree.contains("crow"));
+
         assertTrue(tree.remove("pig"));
+        assertFalse(tree.contains("pig"));
+        assertTrue(tree.contains("pin"));
+
         assertTrue(tree.remove("pin"));
+        assertFalse(tree.contains("pin"));
+
         assertTrue(tree.remove("crow"));
+        assertFalse(tree.contains("crow"));
         assertEmpty(tree);
     }
 
