@@ -247,23 +247,29 @@ public class RadixTree {
 
     private void addParent(int remainingNode, final byte key, int remainingString, final NodeState context) {
         allocate(parent);
-        if (context.found.equals(root)) {
+        final Node3 found = context.found;
+        if (found.equals(root)) {
             root.wrap(parent);
         }
-        if (context.keyPos >= 0) {
-            context.parent.index(context.keyPos, context.parent.key(context.keyPos), parent.block());
+        final int position = context.keyPos;
+        if (position >= 0) {
+            boolean complete = context.parent.completeKey(position);
+            context.parent
+                .index(position, context.parent.key(position), parent.block())
+                .completeKey(position, complete);
         }
 
-        final Node3 found = context.found;
         final int foundBlock = remainingNode == 1 && found.keyCount() == 0 ? 0 : found.block();
         final int childBlock = remainingString >= 2 ? allocate(child).block() : 0;
         if (remainingNode >= 1) {
-            final byte foundKey = context.found.string(0);
+            final byte foundKey = found.string(0);
             parent
                 .stringLength(0).completeString(false)
                 .keyCount(2)
-                .index(0, foundKey, foundBlock).completeKey(0, foundBlock == 0)
-                .index(1, key, childBlock).completeKey(1, remainingString == 1);
+                .index(0, foundKey, foundBlock)
+                .completeKey(0, foundBlock == 0)
+                .index(1, key, childBlock)
+                .completeKey(1, remainingString == 1);
         }
         if (foundBlock == 0) {
             free(found);

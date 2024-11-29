@@ -43,7 +43,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void childAddParentAndKey() {
+    public void addParentChildAndKey() {
         final var tree = new RadixTree();
         addContains(tree, "abcdef");
         addContains(tree, "abcdxy");
@@ -716,11 +716,8 @@ public class RadixTreeTest {
         addContains(tree, "1234567890-1");
         addContains(tree, "1234567890-10");
         assertTrue(tree.contains("1234567890-1"));
-
         addContains(tree, "1234567890-11");
         assertTrue(tree.contains("1234567890-1"));
-
-        tree.forEach(System.out::println);
     }
 
     private static void assertEmpty(final RadixTree tree)
