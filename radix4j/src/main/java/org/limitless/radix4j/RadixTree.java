@@ -21,7 +21,7 @@ public class RadixTree {
     private final Node3 root;
     private final Node3 child;
     private final Node3 parent;
-    private final NodeState state;
+    private final SearchState search;
 
     private int size;
     private int allocatedBlocks;
@@ -43,7 +43,7 @@ public class RadixTree {
         parent = pool.allocate();
         root = pool.allocate();
         child = pool.allocate();
-        state = new NodeState(pool.allocate(), pool.allocate());
+        search = new SearchState(pool.allocate(), pool.allocate());
     }
 
     /**
@@ -62,16 +62,16 @@ public class RadixTree {
      */
     public boolean add(final byte[] string) {
         if (root.stringLength() == 0 && root.keyCount() == 0) {
-            addString(string.length, string, 0, state.found.wrap(root));
+            addString(string.length, string, 0, search.found.wrap(root));
             ++size;
             return true;
         }
-        if (!state.mismatch(root, string, string.length, false)) {
+        if (!search.mismatch(root, string, string.length, false)) {
             return false;
         }
         ++size;
 
-        addString(state.position, string.length, string, state);
+        addString(search.position, string.length, string, search);
         return true;
     }
 
@@ -93,7 +93,7 @@ public class RadixTree {
      * @return true if the string is present
      */
     public boolean contains(final byte[] string) {
-        return !state.mismatch(root, string, string.length, false);
+        return !search.mismatch(root, string, string.length, false);
     }
 
     /**
@@ -109,18 +109,18 @@ public class RadixTree {
      * @param string value
      */
     public boolean remove(final byte[] string) {
-        if (isEmpty() || state.mismatch(root, string, string.length, true)) {
+        if (isEmpty() || search.mismatch(root, string, string.length, true)) {
             return false;
         }
         --size;
 
-        final MemorySegment memory = state.found.memorySegment();
-        final int segment = state.found.segment();
-        final Node3 found = state.found;
-        if (state.key == Node3.EMPTY_KEY) {
+        final MemorySegment memory = search.found.memorySegment();
+        final int segment = search.found.segment();
+        final Node3 found = search.found;
+        if (search.key == Node3.EMPTY_KEY) {
             found.completeString(false);
         } else {
-            final int position = state.keyPos;
+            final int position = search.keyPos;
             final int block = found.child(position);
             if (found.completeKey(position)) {
                 found.completeKey(position, false);
@@ -132,9 +132,9 @@ public class RadixTree {
         if (found.keyCount() == 0 && !found.completeString()) {
             free(found);
 
-            for (int i = state.pathCount - 2; i >= 0; --i) {
-                found.wrap(memory, segment, state.pathBlocks[i]);
-                final int position = state.pathPositions[i + 1];
+            for (int i = search.pathCount - 2; i >= 0; --i) {
+                found.wrap(memory, segment, search.pathBlocks[i]);
+                final int position = search.pathPositions[i + 1];
                 found.removeKey(position);
                 if (found.keyCount() >= 1 || found.completeString()) {
                     break;
@@ -218,7 +218,7 @@ public class RadixTree {
         return "RadixTree{ size = " + size + ", bytes = " + pool.allocatedBytes() + " }";
     }
 
-    private void addString(final int offset, final int length, final byte[] string, final NodeState context) {
+    private void addString(final int offset, final int length, final byte[] string, final SearchState context) {
         final int nodeLength = context.found.stringLength();
         final int remainingNode = nodeLength - context.mismatch;
         int remainingString = length - offset;
@@ -250,7 +250,7 @@ public class RadixTree {
         }
     }
 
-    private void addParent(int remainingNode, final byte key, int remainingString, final NodeState context) {
+    private void addParent(int remainingNode, final byte key, int remainingString, final SearchState context) {
         allocate(parent);
         final Node3 found = context.found;
         if (found.equals(root)) {
@@ -351,7 +351,7 @@ public class RadixTree {
             found.wrap(child);
         }
         if (block != 0) {
-            state.found.wrap(parent);
+            search.found.wrap(parent);
         }
         return consumed;
     }
@@ -386,7 +386,7 @@ public class RadixTree {
     }
 
     private void free(final Node3 node) {
-        if (root.address() == state.found.address()) {
+        if (root.address() == search.found.address()) {
             root.stringLength(0).keyCount(0);
         } else {
             --allocatedBlocks;
@@ -394,7 +394,7 @@ public class RadixTree {
         }
     }
 
-    private static final class NodeState {
+    private static final class SearchState {
         int mismatchType;
         int mismatch;
         int position;
@@ -409,7 +409,7 @@ public class RadixTree {
         int[] pathPositions = new int[INITIAL_STACK_SIZE];
         int pathCount;
 
-        NodeState(final Node3 found, final Node3 parent) {
+        SearchState(final Node3 found, final Node3 parent) {
             this.found = found;
             this.parent = parent;
         }
