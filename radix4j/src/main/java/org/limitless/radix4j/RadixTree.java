@@ -280,7 +280,7 @@ public class RadixTree {
             free(found);
             found.wrap(parent);
         } else {
-            found.copyString(1, remainingNode - 1);
+            found.moveString(1, remainingNode - 1);
         }
         if (childBlock != 0) {
             found.wrap(child);
@@ -300,7 +300,7 @@ public class RadixTree {
             parent.copyNode(found);
         }
         if (remainingNode >= 2) {
-            parent.copyString(mismatch + 1, remainingNode - 1);
+            parent.moveString(mismatch + 1, remainingNode - 1);
         } else {
             if (count == 1) {
                 parent

@@ -76,7 +76,7 @@ public class Node3 extends Node {
         return this;
     }
 
-    protected void copyString(final int position, final int length) {
+    protected void moveString(final int position, final int length) {
         if (length >= 1) {
             long stringOffset = fieldOffset(STRING_OFFSET);
             MemorySegment.copy(memorySegment(), stringOffset + position,
