@@ -10,13 +10,16 @@ import static org.limitless.radix4j.Node14.*;
 
 public class RadixTree14 {
 
-    private static final String BLOCKS_PER_SEGMENT_PROP = "radix4j.blocks.per.segment";
-    private static final int BLOCKS_PER_SEGMENT = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 128 * 1024);
+    protected static final int MAX_BLOCK_COUNT = 1 << 16;
+    protected static final int MAX_SEGMENT_COUNT = 1 << 8;
+    private static final int INITIAL_PATH_SIZE = 32;
 
-    private static final String INITIAL_PATH_SIZE_PROP = "radix4j.initial.path.size";
-    private static final int INITIAL_PATH_SIZE = Integer.getInteger(INITIAL_PATH_SIZE_PROP, 32);
-
-    private static final int BLOCK_ALIGNMENT = 64;
+    private static final int TYPE_NULL = 0;
+    private static final int TYPE_SUBSTRING = 1;
+    private static final int TYPE_COMMON_PREFIX = 2;
+    private static final int TYPE_COMMON_PREFIX_AND_KEY = 3;
+    private static final int TYPE_NO_COMMON_PREFIX = 4;
+    private static final int TYPE_MISSING_KEY = 5;
 
     private final BlockPool<Node14> pool;
     private final Node14 root;
@@ -27,20 +30,8 @@ public class RadixTree14 {
     private int size;
     private int allocatedBlocks;
 
-    private static final int TYPE_NULL = 0;
-    private static final int TYPE_SUBSTRING = 1;
-    private static final int TYPE_COMMON_PREFIX = 2;
-    private static final int TYPE_COMMON_PREFIX_AND_KEY = 3;
-    private static final int TYPE_NO_COMMON_PREFIX = 4;
-    private static final int TYPE_MISSING_KEY = 5;
-
     public RadixTree14() {
-        this(BLOCKS_PER_SEGMENT);
-    }
-
-    public RadixTree14(final int blockPerSegment) {
-        final int alignedBlocks = (blockPerSegment + (BLOCK_ALIGNMENT - 1)) & -BLOCK_ALIGNMENT;
-        pool = new BlockPool.Builder<>(Arena.ofShared(), Node14.class).blocksPerSegment(alignedBlocks).build();
+        pool = new BlockPool.Builder<>(Arena.ofShared(), Node14.class).blocksPerSegment(MAX_BLOCK_COUNT).build();
         parent = allocate(new Node14());
         root = allocate(new Node14());
         child = allocate(new Node14());
@@ -400,6 +391,11 @@ public class RadixTree14 {
 
     private Node14 allocate(final Node14 node) {
         ++allocatedBlocks;
+
+        final int segments = allocatedBlocks / MAX_BLOCK_COUNT;
+        if (segments >= MAX_SEGMENT_COUNT) {
+            throw new IllegalStateException("too many segments " + segments);
+        }
 
         pool.allocate(node);
         node.header((byte) 0);

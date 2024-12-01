@@ -13,9 +13,6 @@ public class Node14 extends BlockFlyweight {
 
     protected static final int MAX_STRING_LENGTH = 7;
     protected static final int MAX_INDEX_COUNT = 14;
-    protected static final int MAX_BLOCK_COUNT = 1 << 16;
-    protected static final int MAX_SEGMENT_COUNT =(1 << 8;
-
 
     private static final int BLOCK_OFFSET_BITS = 0;
     private static final int BLOCK_LENGTH_BITS = 16;
@@ -56,7 +53,7 @@ public class Node14 extends BlockFlyweight {
         long str = nativeLong(HEADER_OFFSET);
         str >>>= 8;
         for (int i = 0; i < remaining; ++i) {
-            if ((str & 0xff) != string[i + stringOffset]) {
+            if ((str & Index.KEY_MASK) != string[i + stringOffset]) {
                 return i;
             }
             str >>>= 8;
