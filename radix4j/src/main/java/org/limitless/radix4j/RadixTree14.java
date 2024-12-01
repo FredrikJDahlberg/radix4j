@@ -3,7 +3,6 @@ package org.limitless.radix4j;
 import org.limitless.fsmp4j.BlockPool;
 
 import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 import java.util.function.Consumer;
 
@@ -406,7 +405,6 @@ public class RadixTree14 {
 
     private void free(final Node14 node) {
         if (root.address() == search.found.address()) {
-            final byte header = root.header();
             root.header(0, false, 0);
         } else {
             --allocatedBlocks;
@@ -422,8 +420,8 @@ public class RadixTree14 {
         byte key;
         int keyPos;
 
-        Node14 found;
-        Node14 parent;
+        final Node14 found;
+        final Node14 parent;
 
         int[] pathOffsets = new int[INITIAL_STACK_SIZE];
         int[] pathPositions = new int[INITIAL_STACK_SIZE];

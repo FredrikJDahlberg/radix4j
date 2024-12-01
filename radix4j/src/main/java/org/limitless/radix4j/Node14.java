@@ -16,32 +16,14 @@ public class Node14 extends BlockFlyweight {
     protected static final int MAX_BLOCK_COUNT = 1 << 24;
     protected static final int MAX_SEGMENT_COUNT = 1 << 8;
 
-    // header bit layout
-    protected static final int STRING_COMPLETE_OFFSET_BITS = 0;
-    protected static final int STRING_COMPLETE_LENGTH_BITS = 1;
-    protected static final int STRLEN_OFFSET_BITS = STRING_COMPLETE_OFFSET_BITS + STRING_COMPLETE_LENGTH_BITS;
-    protected static final int STRLEN_LENGTH_BITS = 3;
-    protected static final int INDEX_COUNT_OFFSET_BITS = STRLEN_OFFSET_BITS + STRLEN_LENGTH_BITS;
-    protected static final int INDEX_COUNT_LENGTH_BITS = 4;
 
-    protected static final int STRING_COMPLETE_MASK = 0xff >>> (Byte.SIZE - STRING_COMPLETE_LENGTH_BITS) << STRING_COMPLETE_OFFSET_BITS;
-    protected static final int INDEX_COUNT_MASK = 0xff >>> (Byte.SIZE - INDEX_COUNT_LENGTH_BITS) << INDEX_COUNT_OFFSET_BITS;
-    protected static final int STRLEN_MASK = 0xff >>> (Byte.SIZE - STRLEN_LENGTH_BITS) << STRLEN_OFFSET_BITS;
+    private static final int BLOCK_OFFSET_BITS = 0;
+    private static final int BLOCK_LENGTH_BITS = 16;
+    private static final int SEGMENT_OFFSET_BITS = BLOCK_OFFSET_BITS + BLOCK_LENGTH_BITS;
+    private static final int SEGMENT_LENGTH_BITS = 8;
 
-    // index bit layout
-    protected static final int BLOCK_OFFSET_BITS = 0;
-    protected static final int BLOCK_LENGTH_BITS = 24;
-    protected static final int KEY_OFFSET_BITS = BLOCK_OFFSET_BITS + BLOCK_LENGTH_BITS;
-    protected static final int KEY_LENGTH_BITS = MAX_STRING_LENGTH;
-    protected static final int KEY_COMPLETE_OFFSET_BITS = KEY_OFFSET_BITS + KEY_LENGTH_BITS;
-    protected static final int KEY_COMPLETE_LENGTH_BITS = 1;
-
-    protected static final int INDEX_LENGTH_BITS = KEY_COMPLETE_OFFSET_BITS + KEY_COMPLETE_LENGTH_BITS;
-    protected static final int INDEX_BYTES = INDEX_LENGTH_BITS / Byte.SIZE;
-
-    protected static final int INDEX_COMPLETE_MASK = -1 >>> (Integer.SIZE - KEY_COMPLETE_LENGTH_BITS) << KEY_COMPLETE_OFFSET_BITS;
-    protected static final int INDEX_KEY_MASK = -1 >>> (Integer.SIZE - KEY_LENGTH_BITS) << KEY_OFFSET_BITS;
-    protected static final int INDEX_BLOCK_MASK = -1 >>> (Integer.SIZE - BLOCK_LENGTH_BITS) << BLOCK_OFFSET_BITS;
+    private static final int BLOCK_MASK = -1 >>> (Integer.SIZE - BLOCK_LENGTH_BITS);
+    private static final int SEGMENT_MASK = -1 >>> (Integer.SIZE - SEGMENT_LENGTH_BITS);
 
     // node byte layout
     protected static final int HEADER_OFFSET = 0;
@@ -49,7 +31,7 @@ public class Node14 extends BlockFlyweight {
     protected static final int STRING_OFFSET = HEADER_OFFSET + HEADER_LENGTH;
     protected static final int STRING_LENGTH = 7;
     protected static final int INDEX_OFFSET = STRING_OFFSET + STRING_LENGTH;
-    protected static final int INDEX_LENGTH = MAX_INDEX_COUNT * INDEX_BYTES;
+    protected static final int INDEX_LENGTH = MAX_INDEX_COUNT * Index.BYTES;
     protected static final int BYTES = INDEX_OFFSET + INDEX_LENGTH;
 
     public int offset() {
@@ -93,8 +75,8 @@ public class Node14 extends BlockFlyweight {
     }
 
     public static long addressFromOffset(final int offset) {
-        int segment = ((offset & 0x00ff_0000) >>> 16) + 1; // FIXME
-        int block = offset & 0x0000_ffff;
+        int segment = ((offset >>> SEGMENT_OFFSET_BITS) & SEGMENT_MASK) + 1;
+        int block = (offset >>> BLOCK_OFFSET_BITS) & BLOCK_MASK;
         return ByteUtils.pack(segment, block);
     }
 
@@ -126,13 +108,7 @@ public class Node14 extends BlockFlyweight {
     }
 
     public Node14 index(final int position, final byte key, final int block, boolean complete) {
-        // FIXME
-        int index = ((key & 0x7f) << KEY_OFFSET_BITS) | ((block & 0x00ff_ffff) << BLOCK_OFFSET_BITS);
-        if (complete) {
-            index |= INDEX_COMPLETE_MASK;
-        } else {
-            index &= ~INDEX_COMPLETE_MASK;
-        }
+        final int index = Index.key(0, key) | Index.completeKey(0, true) | Index.offset(0, block);
         nativeInt(INDEX_OFFSET + position * Integer.BYTES, index);
         return this;
     }
@@ -211,18 +187,8 @@ public class Node14 extends BlockFlyweight {
     public StringBuilder append(StringBuilder builder) {
         byte header = header();
         builder.setLength(0);
-        builder.append("{Node").append(segment()).append('#').append(block()).append(", ");
-        int length = builder.length();
-
-        //if (Header.completeString(header)) {
-        //    builder.append('S');
-        //}
-        //if (builder.length() != length) {
-        //    builder.append(", ");
-        //}
-
-        int stringLength = Header.stringLength(header);
-        builder.append('\"');
+        builder.append("{Node").append(segment()).append('#').append(block()).append(", \"");
+        final int stringLength = Header.stringLength(header);
         if (stringLength >= 1) {
             final byte[] bytes = new byte[stringLength];
             nativeByteArray(STRING_OFFSET, stringLength, bytes);
@@ -233,7 +199,7 @@ public class Node14 extends BlockFlyweight {
             builder.append('!');
         }
 
-        int count = Header.indexCount(header);
+        final int count = Header.indexCount(header);
         if (count >= 1) {
             builder.append(" [");
             for (int i = 0; i < count; ++i) {
@@ -259,68 +225,91 @@ public class Node14 extends BlockFlyweight {
     // header helpers
     public static final class Header {
 
+        // bit layout
+        private static final int STRING_COMPLETE_OFFSET = 0;
+        private static final int STRING_COMPLETE_LENGTH = 1;
+        private static final int STRLEN_OFFSET = STRING_COMPLETE_OFFSET + STRING_COMPLETE_LENGTH;
+        private static final int STRLEN_LENGTH = 3;
+        private static final int INDEX_COUNT_OFFSET = STRLEN_OFFSET + STRLEN_LENGTH;
+        private static final int INDEX_COUNT_LENGTH = 4;
+
+        private static final byte STRING_COMPLETE_MASK = 0xff >>> (Byte.SIZE - STRING_COMPLETE_LENGTH);
+        private static final byte INDEX_COUNT_MASK = 0xff >>> (Byte.SIZE - INDEX_COUNT_LENGTH);
+        private static final byte STRLEN_MASK = 0xff >>> (Byte.SIZE - STRLEN_LENGTH);
+
         public static boolean completeString(final byte header) {
-            return (header & STRING_COMPLETE_MASK) != 0;
+            return ((header >>> STRING_COMPLETE_OFFSET) & STRING_COMPLETE_MASK) != 0;
         }
 
         public static byte completeString(final byte header, final boolean value) {
             if (value) {
-                return (byte) (header | STRING_COMPLETE_MASK);
+                return (byte) (header | (STRING_COMPLETE_MASK << STRING_COMPLETE_OFFSET));
             } else {
-                return (byte) (header & ~STRING_COMPLETE_MASK);
+                return (byte) (header & ~(STRING_COMPLETE_MASK << STRING_COMPLETE_OFFSET));
             }
         }
 
         public static int indexCount(final int header) {
-            return (header & INDEX_COUNT_MASK) >> INDEX_COUNT_OFFSET_BITS;
+            return (header >>> INDEX_COUNT_OFFSET) & INDEX_COUNT_MASK;
         }
 
         public static byte indexCount(final int header, final int count) {
-            // FIXME
-            return (byte) ((header & ~INDEX_COUNT_MASK) | ((count & 0xf) << INDEX_COUNT_OFFSET_BITS));
+            return (byte) ((header & ~(INDEX_COUNT_MASK << INDEX_COUNT_OFFSET)) | ((count & INDEX_COUNT_MASK) << INDEX_COUNT_OFFSET));
         }
 
         public static int stringLength(final int header) {
-            return (header & STRLEN_MASK) >>> STRLEN_OFFSET_BITS;
+            return (header >>> STRLEN_OFFSET) & STRLEN_MASK;
         }
 
         public static byte stringLength(final int header, final int length) {
-            // FIXME
-            return (byte) ((header & ~STRLEN_MASK) | ((length & 0x7) << STRLEN_OFFSET_BITS));
+            return (byte) ((header & ~(STRLEN_MASK << STRLEN_OFFSET)) | ((length & STRLEN_MASK) << STRLEN_OFFSET));
         }
     }
 
     // index helpers
     public static final class Index {
 
+        // index bit layout
+        private static final int BLOCK_OFFSET = 0;
+        private static final int BLOCK_LENGTH = 24;
+        private static final int KEY_OFFSET = BLOCK_OFFSET + BLOCK_LENGTH;
+        private static final int KEY_LENGTH = MAX_STRING_LENGTH;
+        private static final int KEY_COMPLETE_OFFSET = KEY_OFFSET + KEY_LENGTH;
+        private static final int KEY_COMPLETE_LENGTH = 1;
+
+        private static final int INDEX_LENGTH = KEY_COMPLETE_OFFSET + KEY_COMPLETE_LENGTH;
+        private static final int BYTES = INDEX_LENGTH / Byte.SIZE;
+
+        private static final int KEY_COMPLETE_MASK = -1 >>> (Integer.SIZE - KEY_COMPLETE_LENGTH);
+        private static final int KEY_MASK = -1 >>> (Integer.SIZE - KEY_LENGTH);
+        private static final int BLOCK_MASK = -1 >>> (Integer.SIZE - BLOCK_LENGTH);
+
         public static boolean completeKey(final int index) {
-            return (index & INDEX_COMPLETE_MASK) != 0;
+            return (index & (KEY_COMPLETE_MASK << KEY_COMPLETE_OFFSET)) != 0;
         }
 
         public static int completeKey(int index, boolean value) {
             if (value) {
-                return index | INDEX_COMPLETE_MASK;
+                return index | (KEY_COMPLETE_MASK << KEY_COMPLETE_OFFSET);
             } else {
-                return index & ~INDEX_COMPLETE_MASK;
+                return index & ~(KEY_COMPLETE_MASK << KEY_COMPLETE_OFFSET);
             }
         }
 
         public static int offset(final int index) {
-            return (index & INDEX_BLOCK_MASK) >> BLOCK_OFFSET_BITS;
+            return (index >>> BLOCK_OFFSET) & BLOCK_MASK;
         }
 
-        public static int offset(final int index, final int block) {
-            // FIXME
-            return (index & ~INDEX_BLOCK_MASK) | ((block & 0x00ffffff) << BLOCK_OFFSET_BITS);
+        public static int offset(final int segment, final int block) {
+            return (segment & ~(BLOCK_MASK << BLOCK_OFFSET)) | ((block & BLOCK_MASK) << BLOCK_OFFSET);
         }
 
         public static byte key(final int index) {
-            return (byte) ((index & INDEX_KEY_MASK) >>> KEY_OFFSET_BITS);
+            return (byte) ((index >>> KEY_OFFSET) & KEY_MASK);
         }
 
         public static int key(final int index, final byte key) {
-            // FIXME
-            return (index & ~INDEX_KEY_MASK) | ((key & 0x7f) << KEY_OFFSET_BITS);
+            return (index & ~(KEY_MASK << KEY_OFFSET) | ((key & KEY_MASK) << KEY_OFFSET));
         }
     }
 }
