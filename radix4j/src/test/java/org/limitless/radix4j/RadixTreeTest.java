@@ -747,6 +747,8 @@ public class RadixTreeTest {
         for (int i = 0; i < count; ++i) {
             assertTrue(tree.add("abcdefghijklmnop-" + i));
         }
+        System.out.printf("bytes = %,d\n", Node3.BYTES * tree.allocatedBlocks());
+
         for (int i = 0; i < count; ++i) {
             assertTrue(tree.contains("abcdefghijklmnop-" + i));
         }

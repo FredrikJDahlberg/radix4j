@@ -54,8 +54,34 @@ public class RadixTree14Test {
     public void addLongString() {
         final var tree = new RadixTree14();
         assertTrue(tree.add("12345678901234567890-0"));
-        tree.forEach(System.out::println);
         assertTrue(tree.contains("12345678901234567890-0"));
+    }
+
+    @Test
+    public void treeWithOneSegment() {
+        final var tree = new RadixTree14();
+        addStrings(tree, 250_000);
+    }
+
+    @Test
+    public void treeWithBlocksPerSegmentProperty() {
+        final var tree = new RadixTree14(1024 * 16);
+        addStrings(tree, 1_000_000);
+    }
+
+    private void addStrings(final RadixTree14 tree, final int count) {
+        for (int i = 0; i < count; ++i) {
+            assertTrue(tree.add("abcdefghijklmnop-" + i), i + "");
+        }
+        System.out.printf("bytes = %,d\n", Node14.BYTES * tree.allocatedBlocks());
+
+        for (int i = 0; i < count; ++i) {
+            assertTrue(tree.contains("abcdefghijklmnop-" + i), i + "");
+        }
+        for (int i = 0; i < count; ++i) {
+            assertTrue(tree.remove("abcdefghijklmnop-" + i), i + "");
+        }
+        assertEmpty(tree);
     }
 
     private static void assertEmpty(final RadixTree14 tree) {

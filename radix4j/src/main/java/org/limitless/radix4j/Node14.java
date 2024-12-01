@@ -13,8 +13,8 @@ public class Node14 extends BlockFlyweight {
 
     protected static final int MAX_STRING_LENGTH = 7;
     protected static final int MAX_INDEX_COUNT = 14;
-    protected static final int MAX_BLOCK_COUNT = 1 << 24;
-    protected static final int MAX_SEGMENT_COUNT = 1 << 8;
+    protected static final int MAX_BLOCK_COUNT = 1 << 16;
+    protected static final int MAX_SEGMENT_COUNT =(1 << 8;
 
 
     private static final int BLOCK_OFFSET_BITS = 0;
@@ -146,13 +146,10 @@ public class Node14 extends BlockFlyweight {
         header(Header.indexCount(header, newCount));
     }
 
-    public int position(byte key) {
-        byte header = header();
-        int count = Header.indexCount(header);
+    public int position(final int count, final byte key) {
         if (count == 0) {
             return NOT_FOUND;
         }
-
         int found = NOT_FOUND;
         for (int i = 0; i < count; ++i) {
             final int index = index(i);

@@ -13,8 +13,10 @@ public class RadixTree14 {
     private static final String BLOCKS_PER_SEGMENT_PROP = "radix4j.blocks.per.segment";
     private static final int BLOCKS_PER_SEGMENT = Integer.getInteger(BLOCKS_PER_SEGMENT_PROP, 128 * 1024);
 
-    private static final String INITIAL_PATH_STACK_SIZE_PROP = "radix4j.initial.path.stack.size";
-    private static final int INITIAL_STACK_SIZE = Integer.getInteger(INITIAL_PATH_STACK_SIZE_PROP, 32);
+    private static final String INITIAL_PATH_SIZE_PROP = "radix4j.initial.path.size";
+    private static final int INITIAL_PATH_SIZE = Integer.getInteger(INITIAL_PATH_SIZE_PROP, 32);
+
+    private static final int BLOCK_ALIGNMENT = 64;
 
     private final BlockPool<Node14> pool;
     private final Node14 root;
@@ -37,8 +39,8 @@ public class RadixTree14 {
     }
 
     public RadixTree14(final int blockPerSegment) {
-        pool = new BlockPool.Builder<>(Arena.ofShared(), Node14.class)
-            .blocksPerSegment(blockPerSegment).build();
+        final int alignedBlocks = (blockPerSegment + (BLOCK_ALIGNMENT - 1)) & -BLOCK_ALIGNMENT;
+        pool = new BlockPool.Builder<>(Arena.ofShared(), Node14.class).blocksPerSegment(alignedBlocks).build();
         parent = allocate(new Node14());
         root = allocate(new Node14());
         child = allocate(new Node14());
@@ -66,7 +68,7 @@ public class RadixTree14 {
             ++size;
             return true;
         }
-        if (!search.mismatch(root, string, string.length, false)) {
+        if (!search.mismatch(pool, root, string, string.length, false)) {
             return false;
         }
         ++size;
@@ -93,7 +95,7 @@ public class RadixTree14 {
      * @return true if the string is present
      */
     public boolean contains(final byte[] string) {
-        return !search.mismatch(root, string, string.length, false);
+        return !search.mismatch(pool, root, string, string.length, false);
     }
 
     /**
@@ -109,14 +111,14 @@ public class RadixTree14 {
      * @param string value
      */
     public boolean remove(final byte[] string) {
-        if (isEmpty() || search.mismatch(root, string, string.length, true)) {
+        if (isEmpty() || search.mismatch(pool, root, string, string.length, true)) {
             return false;
         }
         --size;
 
         final Node14 found = search.found;
         byte header = found.header();
-        if (search.key == Node14.EMPTY_KEY) {
+        if (search.key == EMPTY_KEY) {
             found.header(Header.completeString(header, false));
         } else {
             final int position = search.keyPos;
@@ -124,7 +126,7 @@ public class RadixTree14 {
             if (Index.completeKey(index)) {
                 found.index(position, Index.completeKey(index, false));
             }
-            if (Index.offset(index) == Node14.EMPTY_BLOCK) {
+            if (Index.offset(index) == EMPTY_BLOCK) {
                 found.removeIndex(position);
             }
         }
@@ -133,9 +135,9 @@ public class RadixTree14 {
 
             free(found);
             for (int i = search.pathCount - 2; i >= 0; --i) {
-                pool.get(Node14.addressFromOffset(search.pathOffsets[i]), found);
+                pool.get(addressFromOffset(search.pathOffsets[i]), found);
 
-                final int position = search.pathPositions[i + 1];
+                final int position = search.pathKeyPositions[i + 1];
                 final byte newHeader = found.header();
                 final int count = Header.indexCount(newHeader);
                 final boolean complete = Header.completeString(newHeader);
@@ -203,7 +205,7 @@ public class RadixTree14 {
 
         while (search.pathCount >= 1) {
             final int nodeOffset = search.pathOffsets[--search.pathCount];
-            final long address = Node14.addressFromOffset(nodeOffset);
+            final long address = addressFromOffset(nodeOffset);
             pool.get(address, node);
 
             consumer.accept(node);
@@ -212,7 +214,7 @@ public class RadixTree14 {
             final int count = Header.indexCount(header);
             for (int i = 0; i < count; ++i) {
                 final int childOffset = Index.offset(node.index(i));
-                if (childOffset != Node14.EMPTY_BLOCK) {
+                if (childOffset != EMPTY_BLOCK) {
                     if (search.pathCount >= search.pathOffsets.length) {
                         search.pathOffsets = Arrays.copyOf(search.pathOffsets, search.pathOffsets.length * 2);
                     }
@@ -340,7 +342,7 @@ public class RadixTree14 {
         final byte foundHeader = found.header();
         final int count = Header.indexCount(foundHeader);
         final int consumed;
-        if (count < Node14.MAX_INDEX_COUNT) {
+        if (count < MAX_INDEX_COUNT) {
             if (length == 0) {
                 final int index = found.index(keyPos);
                 found.index(keyPos, Index.completeKey(index, true));
@@ -352,11 +354,11 @@ public class RadixTree14 {
                 consumed = 1;
             }
         } else {
-            final int index = found.index(Node14.MAX_INDEX_COUNT - 1);
+            final int index = found.index(MAX_INDEX_COUNT - 1);
             final int childOffset = allocate(child).offset();
-            found.index(2, Node14.EMPTY_KEY, childOffset, false);
+            found.index(2, EMPTY_KEY, childOffset, false);
             child
-                .header(0, false, Node14.MAX_INDEX_COUNT - 1)
+                .header(0, false, MAX_INDEX_COUNT - 1)
                 .index(0, index)
                 .index(1, key, offset, true);
             consumed = 1;
@@ -372,7 +374,7 @@ public class RadixTree14 {
         int remaining = length;
         int position = offset;
         while (remaining >= 1) {
-            final int stringLength = Math.min(Node14.STRING_LENGTH, remaining);
+            final int stringLength = Math.min(STRING_LENGTH, remaining);
             byte foundHeader = found.header();
             found
                 .header(stringLength, remaining == stringLength, Header.indexCount(foundHeader))
@@ -398,6 +400,7 @@ public class RadixTree14 {
 
     private Node14 allocate(final Node14 node) {
         ++allocatedBlocks;
+
         pool.allocate(node);
         node.header((byte) 0);
         return node;
@@ -423,8 +426,8 @@ public class RadixTree14 {
         final Node14 found;
         final Node14 parent;
 
-        int[] pathOffsets = new int[INITIAL_STACK_SIZE];
-        int[] pathPositions = new int[INITIAL_STACK_SIZE];
+        int[] pathOffsets = new int[INITIAL_PATH_SIZE];
+        int[] pathKeyPositions = new int[INITIAL_PATH_SIZE];
         int pathCount;
 
         SearchState(final Node14 found, final Node14 parent) {
@@ -434,21 +437,26 @@ public class RadixTree14 {
 
         /**
          * Find the insertion point for a new string
+         * @param pool block pool
          * @param string UTF-8 bytes
          * @param length string length
          * @param root the insertion point data
          * @return true when mismatch exists
          */
-        private boolean mismatch(final Node14 root, final byte[] string, final int length, final boolean withPath) {
+        private boolean mismatch(final BlockPool<Node14> pool,
+                                 final Node14 root,
+                                 final byte[] string,
+                                 final int length,
+                                 final boolean withPath) {
             mismatch = 0;
             position = 0;
-            key = -1;
-            keyPos = -1;
+            key = NOT_FOUND;
+            keyPos = NOT_FOUND;
             mismatchType = TYPE_NULL;
             found.wrap(root);
             parent.wrap(root);
             pathOffsets[0] = root.offset();
-            pathPositions[0] = 0;
+            pathKeyPositions[0] = 0;
             pathCount = 1;
 
             boolean processString = true;
@@ -456,12 +464,11 @@ public class RadixTree14 {
             byte foundHeader = found.header();
             int nodeLength = Header.stringLength(foundHeader);
             while (remaining >= 1) {
-                final int count = Header.indexCount(foundHeader);
                 if (processString) {
                     if (nodeLength >= 1) {
                         mismatch = found.mismatch(string, position, length);
                         if (mismatch == -1) {
-                            key = Node14.EMPTY_KEY;
+                            key = EMPTY_KEY;
                             return false;
                         }
                         remaining -= mismatch;
@@ -474,19 +481,16 @@ public class RadixTree14 {
                     processString = false;
                 } else {
                     mismatchType = TYPE_MISSING_KEY;
-                    int foundPos = Node14.NOT_FOUND;
-                    int foundIndex = 0;
-                    if (count >= 1) {
-                        foundPos = found.position(string[position]);
-                        foundIndex = found.index(foundPos);
-                        key = Index.key(foundIndex);
-                        keyPos = foundPos;
-                    }
-                    if (foundPos == Node14.NOT_FOUND) {
+                    final int count = Header.indexCount(foundHeader);
+                    final int foundPos = found.position(count, string[position]);
+                    if (foundPos == NOT_FOUND) {
                         return true;
                     }
 
-                    if (key != Node14.EMPTY_KEY) {  // empty keys do not advance the input string
+                    final int foundIndex = found.index(foundPos);
+                    keyPos = foundPos;
+                    key = Index.key(foundIndex);
+                    if (key != EMPTY_KEY) {  // empty keys do not advance the input string
                         --remaining;
                         ++position;
                         if (remaining == 0) {
@@ -497,11 +501,11 @@ public class RadixTree14 {
                     parent.wrap(found);
 
                     final int childOffset = Index.offset(foundIndex);
-                    if (childOffset != 0) {
+                    if (childOffset != EMPTY_BLOCK) {
                         if (withPath) {
                             updatePath(childOffset, foundPos);
                         }
-                        found.wrap(found.memorySegment(), found.segment(), childOffset);
+                        pool.get(addressFromOffset(childOffset), found);
                         foundHeader = found.header();
                         nodeLength = Header.stringLength(foundHeader);
                     } else {
@@ -522,10 +526,10 @@ public class RadixTree14 {
         void updatePath(int offset, int keyPosition) {
             if (pathOffsets.length == pathCount + 1) {
                 pathOffsets = Arrays.copyOf(pathOffsets, pathOffsets.length * 2);
-                pathPositions = Arrays.copyOf(pathPositions, pathPositions.length * 2);
+                pathKeyPositions = Arrays.copyOf(pathKeyPositions, pathKeyPositions.length * 2);
             }
             pathOffsets[pathCount] = offset;
-            pathPositions[pathCount] = keyPosition;
+            pathKeyPositions[pathCount] = keyPosition;
             ++pathCount;
         }
     }
