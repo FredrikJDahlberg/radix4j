@@ -90,7 +90,7 @@ public class Node14 extends BlockFlyweight {
     }
 
     public Node14 header(final int length, final boolean complete, final int count) {
-        byte header = 0;
+        byte header;
         header = Header.stringLength(0, length);
         header = Header.indexCount(header, count);
         header = Header.completeString(header, complete);
@@ -108,7 +108,8 @@ public class Node14 extends BlockFlyweight {
     }
 
     public Node14 index(final int position, final byte key, final int block, boolean complete) {
-        final int index = Index.key(0, key) | Index.completeKey(0, true) | Index.offset(0, block);
+        final int index = Index.key(0, key) | Index.completeKey(0, complete) |
+            Index.offset(0, block);
         nativeInt(INDEX_OFFSET + position * Integer.BYTES, index);
         return this;
     }
