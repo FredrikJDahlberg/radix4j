@@ -43,13 +43,6 @@ public class Node14 extends BlockFlyweight {
         return this;
     }
 
-    public Node14 wrap(final MemorySegment memory, final int offset) {
-        final int segment = offset >>> 16;
-        final int block = offset & 0x0000ffff;
-        wrap(memory, segment, block);
-        return this;
-    }
-
     @Override
     public int encodedLength() {
         return BYTES;
@@ -114,30 +107,20 @@ public class Node14 extends BlockFlyweight {
         return this;
     }
 
-    protected Node14 string(final byte[] string, final int position, final int stringLength) {
+    protected void string(final byte[] string, final int position, final int stringLength) {
         final int length = Math.min(STRING_LENGTH, stringLength);
         header(Header.stringLength(header(), length));
         if (length >= 1) {
             nativeByteArray(position, string, STRING_OFFSET, length);
         }
-        return this;
-    }
-
-    protected void string(final byte[] string) {
-        nativeByteArray(STRING_OFFSET, Header.stringLength(header()), string);
-    }
-
-    protected void string(final int stringLength, byte[] string) {
-        nativeByteArray(STRING_OFFSET, stringLength, string);
     }
 
     public byte string(int position) {
         return nativeByte(STRING_OFFSET + position);
     }
 
-    public Node14 string(int position, byte ch) {
+    public void string(int position, byte ch) {
         nativeByte(STRING_OFFSET + position, ch);
-        return this;
     }
 
     protected void moveString(final int position, final int length) {
