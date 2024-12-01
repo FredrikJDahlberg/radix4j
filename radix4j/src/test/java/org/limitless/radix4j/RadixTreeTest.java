@@ -696,6 +696,7 @@ public class RadixTreeTest {
         addContains(tree, "pin");
         addContains(tree, "pig");
         addContains(tree, "crow");
+        tree.forEach(System.out::println);
 
         assertTrue(tree.remove("cat"));
         assertFalse(tree.contains("cat"));
@@ -763,11 +764,6 @@ public class RadixTreeTest {
             tree.forEach(System.out::println);
             fail("tree not empty");
         }
-    }
-
-    private static void print(final String string, final RadixTree tree) {
-        System.out.println(string);
-        tree.forEach(System.out::println);
     }
 
     private static void addContains(final RadixTree tree, final String string) {
