@@ -15,8 +15,8 @@ public class RadixTreeBenchmark {
 
     @State(Scope.Benchmark)
     public static class TreeState {
-        RadixTree14 fullTree;
-        RadixTree14 emptyTree;
+        RadixTree fullTree;
+        RadixTree emptyTree;
         String[] strings;
         int count;
         int failed;
@@ -26,8 +26,8 @@ public class RadixTreeBenchmark {
 
         public TreeState() {
             strings = new String[1_000_000];
-            fullTree = new RadixTree14(RadixTree14.MAX_BLOCK_COUNT);
-            emptyTree = new RadixTree14(RadixTree14.MAX_BLOCK_COUNT);
+            fullTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
+            emptyTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
             fullSet = new HashSet<>(1_000_000);
             emptySet = new HashSet<>(1_000_000);
         }
@@ -37,8 +37,8 @@ public class RadixTreeBenchmark {
     public void setup(final TreeState state) {
         state.failed = 0;
         state.count = 0;
-        state.fullTree = new RadixTree14(RadixTree14.MAX_BLOCK_COUNT);
-        state.emptyTree = new RadixTree14(RadixTree14.MAX_BLOCK_COUNT);
+        state.fullTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
+        state.emptyTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
         state.emptySet.clear();
         state.fullSet.clear();
         final String prefix = "12345678901234567890";
