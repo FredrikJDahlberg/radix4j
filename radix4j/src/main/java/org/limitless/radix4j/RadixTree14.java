@@ -3,6 +3,7 @@ package org.limitless.radix4j;
 import org.limitless.fsmp4j.BlockPool;
 
 import java.lang.foreign.Arena;
+import java.security.InvalidParameterException;
 import java.util.Arrays;
 import java.util.function.Consumer;
 
@@ -10,8 +11,11 @@ import static org.limitless.radix4j.Node14.*;
 
 public class RadixTree14 {
 
-    protected static final int MAX_BLOCK_COUNT = 1 << 16;
+    public static final int MAX_BLOCK_COUNT = 1 << 16;
+    public static final int DEFAULT_BLOCK_COUNT = 1 << 8;
+
     protected static final int MAX_SEGMENT_COUNT = 1 << 8;
+
     private static final int INITIAL_PATH_SIZE = 32;
 
     private static final int TYPE_NULL = 0;
@@ -31,11 +35,18 @@ public class RadixTree14 {
     private int allocatedBlocks;
 
     public RadixTree14() {
-        pool = new BlockPool.Builder<>(Arena.ofShared(), Node14.class).blocksPerSegment(MAX_BLOCK_COUNT).build();
+        this(DEFAULT_BLOCK_COUNT);
+    }
+
+    public RadixTree14(final int blocksPerSegment) {
+        if (blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCK_COUNT) {
+            throw new InvalidParameterException("invalid number of blocks per segment");
+        }
+        pool = new BlockPool.Builder<>(Arena.ofShared(), Node14.class).blocksPerSegment(blocksPerSegment).build();
         parent = allocate(new Node14());
         root = allocate(new Node14());
         child = allocate(new Node14());
-        search = new SearchState(pool.allocate(), pool.allocate());
+        search = new SearchState(allocate(new Node14()), allocate(new Node14()));
     }
 
     /**
@@ -123,20 +134,21 @@ public class RadixTree14 {
         }
         header = found.header();
         if (Header.indexCount(header) == 0 && !Header.completeString(header)) {
-
             free(found);
+
             for (int i = search.pathCount - 2; i >= 0; --i) {
                 pool.get(addressFromOffset(search.pathOffsets[i]), found);
 
+                header = found.header();
+                final int count = Header.indexCount(header);
+                final boolean complete = Header.completeString(header);
                 final int position = search.pathKeyPositions[i + 1];
-                final byte newHeader = found.header();
-                final int count = Header.indexCount(newHeader);
-                final boolean complete = Header.completeString(newHeader);
                 found.removeIndex(position);
-                if (count - 1 >= 1 || complete) {
+                if (count >= 2 || complete) {
                     break;
+                } else {
+                    free(found);
                 }
-                free(found);
             }
         }
         return true;
@@ -227,21 +239,20 @@ public class RadixTree14 {
         int remainingString = length - offset;
         int consumed = 0;
         final byte key = remainingString >= 1 ? string[offset] : context.key;
-        final byte header = context.found.header();
         switch (context.mismatchType) {
             case TYPE_COMMON_PREFIX:
-                consumed = splitNode(remainingNode, string[offset], offset,
-                    remainingString, context.found, context.mismatch);
+                consumed = splitNode(remainingNode, key, offset, remainingString, context.found,
+                    context.mismatch);
                 break;
             case TYPE_NO_COMMON_PREFIX:
                 addParent(remainingNode, key, remainingString, context);
                 consumed = 1;
                 break;
             case TYPE_SUBSTRING:
-                context.found.header(Header.completeString(header, true));
+                context.found.header(Header.completeString(foundHeader, true));
                 break;
             case TYPE_MISSING_KEY:
-                consumed = addKey(remainingString,key, context.keyPos, context.found);
+                consumed = addKey(remainingString, key, context.keyPos, context.found);
                 break;
             case TYPE_COMMON_PREFIX_AND_KEY:
                 addChild(context.key, context.keyPos, context.found);
@@ -315,7 +326,7 @@ public class RadixTree14 {
             }
         }
         found
-            .header(mismatch, false, 1)
+            .header(mismatch, remainingString == 0, 1)
             .index(0, found.string(mismatch), parentOffset, remainingString == 1);
         return addKey(remainingString, key, keyPos, found);
     }
@@ -366,22 +377,17 @@ public class RadixTree14 {
         int position = offset;
         while (remaining >= 1) {
             final int stringLength = Math.min(STRING_LENGTH, remaining);
-            byte foundHeader = found.header();
+            final byte foundHeader = found.header();
             found
                 .header(stringLength, remaining == stringLength, Header.indexCount(foundHeader))
                 .string(string, position, stringLength);
-
             position += stringLength;
             remaining -= stringLength;
-            if (remaining == 1) {
-                found
-                    .header(Header.indexCount(foundHeader, 1))
-                    .index(0, string[position], 0, true);
-            } else if (remaining >= 2) {
-                final int childOffset = allocate(child).offset();
+            if (remaining >= 1) {
+                final int childOffset = remaining == 1 ? 0 : allocate(child).offset();
                 found
                     .header(stringLength, false, 1)
-                    .index(0, string[position], childOffset, false);
+                    .index(0, string[position], childOffset, remaining == 1);
                 found.wrap(child);
             }
             --remaining;
@@ -512,7 +518,7 @@ public class RadixTree14 {
                     }
                 }
             }
-            if (mismatch == nodeLength) {  // substring
+            if (mismatch == nodeLength && remaining == 0) {
                 mismatchType = TYPE_SUBSTRING;
             }
             keyPos = -1;

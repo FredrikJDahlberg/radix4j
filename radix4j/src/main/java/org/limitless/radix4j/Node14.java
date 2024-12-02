@@ -61,7 +61,7 @@ public class Node14 extends BlockFlyweight {
         if (remainingString == nodeLength && Header.completeString(header)) {
             return -1;
         }
-        return nodeLength;
+        return remaining;
     }
 
     public static long addressFromOffset(final int offset) {
@@ -110,6 +110,11 @@ public class Node14 extends BlockFlyweight {
         if (length >= 1) {
             nativeByteArray(position, string, STRING_OFFSET, length);
         }
+    }
+
+    public void string(byte[] string) {
+        final byte header = header();
+        nativeByteArray(STRING_OFFSET, Header.stringLength(header), string);
     }
 
     public byte string(int position) {
