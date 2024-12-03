@@ -284,9 +284,10 @@ public class RadixTree {
         if (remainingNode >= 1) {
             final byte foundKey = found.string(0);
             parent
-                .header(0, false, 2)
-                .index(0, foundKey, foundOffset, foundOffset == 0)
-                .index(1, key, childOffset, remainingString == 1);
+                .header(0, false, 0)
+                .addIndex(foundKey, foundOffset, foundOffset == 0)
+                .addIndex(key, childOffset, remainingString == 1);
+
         }
         if (foundOffset == 0) {
             free(found);
@@ -349,22 +350,18 @@ public class RadixTree {
                 found.index(keyPos, Index.completeKey(index, true));
                 consumed = 0;
             } else {
-                found.addIndex(count, key, offset, length == 1);
-                /*
-                found
-                    .header(Header.indexCount(foundHeader, count + 1))
-                    .index(count, key, offset, length == 1);
-                */
+                found.addIndex(key, offset, length == 1);
                 consumed = 1;
             }
         } else {
             final int index = found.index(MAX_INDEX_COUNT - 1);
             final int childOffset = allocate(child).offset();
-            found.index(2, EMPTY_KEY, childOffset, false);
+            found
+                .index(MAX_INDEX_COUNT, EMPTY_KEY, childOffset, false);
             child
-                .header(0, false, MAX_INDEX_COUNT - 1)
+                .header(0, false, 0)
                 .index(0, index)
-                .index(1, key, offset, true);
+                .addIndex(key, offset, true);
             consumed = 1;
             found.wrap(child);
         }

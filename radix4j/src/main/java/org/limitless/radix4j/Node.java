@@ -13,7 +13,6 @@ public class Node extends BlockFlyweight {
     protected static final int EMPTY_BLOCK = 0;
     protected static final byte EMPTY_KEY = 0;
 
-    protected static final int MAX_STRING_LENGTH = 7;
     protected static final int MAX_INDEX_COUNT = 14;
 
     // node byte layout
@@ -58,12 +57,12 @@ public class Node extends BlockFlyweight {
         return remaining;
     }
 
-    public Node addIndex(final int position, final byte key, final int offset, boolean complete) {
+    public Node addIndex(final byte key, final int offset, boolean complete) {
         final byte header = header();
-        final int newCount = Header.indexCount(header) + 1;
-        header(Header.indexCount(header, newCount));
-        index(position, key, offset, complete);
-        // sortIndices(newCount);
+        final int count = Header.indexCount(header);
+        header(Header.indexCount(header, count + 1));
+        index(count, key, offset, complete);
+        // sortIndices(count + 1);
         return this;
     }
 
@@ -72,9 +71,9 @@ public class Node extends BlockFlyweight {
         final int newCount = Header.indexCount(header) - 1;
         if (position != newCount) {
             index(position, index(newCount));
+            // sortIndices(newCount);
         }
         header(Header.indexCount(header, newCount));
-        // sortIndices(newCount);
     }
 
     public byte header() {
@@ -115,6 +114,7 @@ public class Node extends BlockFlyweight {
         if (count == 0) {
             return NOT_FOUND;
         }
+
         int found = NOT_FOUND;
         for (int i = 0; i < count; ++i) {
             final int index = index(i);
@@ -208,7 +208,7 @@ public class Node extends BlockFlyweight {
             for (int i = gap; i < count; ++i) {
                 final int value = index(i);
                 int j = i;
-                while (j >= gap && index(j - gap) > value) {
+                while (j >= gap && Index.key(index(j - gap)) > Index.key(value)) {
                     index(j, index(j - gap));
                     j -= gap;
                 }
@@ -226,6 +226,13 @@ public class Node extends BlockFlyweight {
             if (Index.key(index(first + length)) < key) {
                 first += length + remainder;
             }
+        }
+        if (Index.key(index(0)) == 0)
+        {
+            return 0;
+        }
+        if (Index.key(index(first)) != key) {
+            return NOT_FOUND;
         }
         return first;
     }
