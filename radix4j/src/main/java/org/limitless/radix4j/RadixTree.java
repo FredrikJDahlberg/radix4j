@@ -18,18 +18,11 @@ public class RadixTree {
 
     private static final int INITIAL_PATH_SIZE = 32;
 
-    private static final int TYPE_NULL = 0;
-    private static final int TYPE_SUBSTRING = 1;
-    private static final int TYPE_COMMON_PREFIX = 2;
-    private static final int TYPE_COMMON_PREFIX_AND_KEY = 3;
-    private static final int TYPE_NO_COMMON_PREFIX = 4;
-    private static final int TYPE_MISSING_KEY = 5;
-
     private final BlockPool<Node> pool;
     private final Node root;
     private final Node child;
     private final Node parent;
-    private final SearchState search;
+    private final Search search;
 
     private int size;
     private int allocatedBlocks;
@@ -46,7 +39,7 @@ public class RadixTree {
         parent = allocate(new Node());
         root = allocate(new Node());
         child = allocate(new Node());
-        search = new SearchState(allocate(new Node()), allocate(new Node()));
+        search = new Search(allocate(new Node()), allocate(new Node()));
     }
 
     /**
@@ -231,7 +224,7 @@ public class RadixTree {
         return "RadixTree{ size = " + size + ", bytes = " + pool.allocatedBytes() + " }";
     }
 
-    private void addString(final int offset, final int length, final byte[] string, final SearchState context) {
+    private void addString(final int offset, final int length, final byte[] string, final Search context) {
         final byte foundHeader = context.found.header();
         final int nodeLength = Header.stringLength(foundHeader);
         final int remainingNode = nodeLength - context.mismatch;
@@ -239,21 +232,21 @@ public class RadixTree {
         int consumed = 0;
         final byte key = remainingString >= 1 ? string[offset] : context.key;
         switch (context.mismatchType) {
-            case TYPE_COMMON_PREFIX:
+            case Search.COMMON_PREFIX:
                 consumed = splitNode(remainingNode, key, offset, remainingString, context.found,
                     context.mismatch);
                 break;
-            case TYPE_NO_COMMON_PREFIX:
+            case Search.NO_COMMON_PREFIX:
                 addParent(remainingNode, key, remainingString, context);
                 consumed = 1;
                 break;
-            case TYPE_SUBSTRING:
+            case Search.SUBSTRING:
                 context.found.header(Header.completeString(foundHeader, true));
                 break;
-            case TYPE_MISSING_KEY:
+            case Search.MISSING_KEY:
                 consumed = addKey(remainingString, key, context.keyPos, context.found);
                 break;
-            case TYPE_COMMON_PREFIX_AND_KEY:
+            case Search.COMMON_PREFIX_AND_KEY:
                 addChild(context.key, context.keyPos, context.found);
                 break;
             default:
@@ -264,7 +257,7 @@ public class RadixTree {
         }
     }
 
-    private void addParent(int remainingNode, final byte key, int remainingString, final SearchState context) {
+    private void addParent(int remainingNode, final byte key, int remainingString, final Search context) {
         allocate(parent);
         final Node found = context.found;
         if (found.equals(root)) {
@@ -416,7 +409,14 @@ public class RadixTree {
         }
     }
 
-    private static final class SearchState {
+    static final class Search {
+        private static final int TYPE_NULL = 0;
+        private static final int SUBSTRING = 1;
+        private static final int COMMON_PREFIX = 2;
+        private static final int COMMON_PREFIX_AND_KEY = 3;
+        private static final int NO_COMMON_PREFIX = 4;
+        private static final int MISSING_KEY = 5;
+
         int mismatchType;
         int mismatch;
         int position;
@@ -431,7 +431,7 @@ public class RadixTree {
         int[] pathKeyPositions = new int[INITIAL_PATH_SIZE];
         int pathCount;
 
-        SearchState(final Node found, final Node parent) {
+        Search(final Node found, final Node parent) {
             this.found = found;
             this.parent = parent;
         }
@@ -476,12 +476,12 @@ public class RadixTree {
                         position += mismatch;
                     }
                     if (mismatch < nodeLength) {
-                        mismatchType = nodeLength >=1 && mismatch == 0 ? TYPE_NO_COMMON_PREFIX : TYPE_COMMON_PREFIX;
+                        mismatchType = nodeLength >=1 && mismatch == 0 ? NO_COMMON_PREFIX : COMMON_PREFIX;
                         return true;
                     }
                     processString = false;
                 } else {
-                    mismatchType = TYPE_MISSING_KEY;
+                    mismatchType = MISSING_KEY;
                     final int count = Header.indexCount(foundHeader);
                     final int foundPos = found.position(count, string[position]);
                     if (foundPos == NOT_FOUND) {
@@ -511,14 +511,14 @@ public class RadixTree {
                         nodeLength = Header.stringLength(foundHeader);
                     } else {
                         if (mismatch < position) {
-                            mismatchType = TYPE_COMMON_PREFIX_AND_KEY;
+                            mismatchType = COMMON_PREFIX_AND_KEY;
                             return true;
                         }
                     }
                 }
             }
             if (mismatch == nodeLength && remaining == 0) {
-                mismatchType = TYPE_SUBSTRING;
+                mismatchType = SUBSTRING;
             }
             keyPos = -1;
             return true;
