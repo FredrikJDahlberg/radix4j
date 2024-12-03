@@ -357,7 +357,7 @@ public class RadixTree {
             final int index = found.index(MAX_INDEX_COUNT - 1);
             final int childOffset = allocate(child).offset();
             found
-                .index(MAX_INDEX_COUNT, EMPTY_KEY, childOffset, false);
+                .index(MAX_INDEX_COUNT - 1, EMPTY_KEY, childOffset, false);
             child
                 .header(0, false, 0)
                 .index(0, index)

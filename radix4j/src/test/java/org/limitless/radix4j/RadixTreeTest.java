@@ -379,13 +379,13 @@ public class RadixTreeTest {
                 assertFalse(Header.completeString(header));
                 assertEquals(2, Header.indexCount(header), "key count");
 
-                final int index1 = node.index(0);
-                assertEquals('r', (char) Index.key(index1), "key 1");
-                assertTrue(Index.completeKey(index1), "key complete 1");
-
-                final int index0 = node.index(1);
+                final int index0 = node.index(0);
                 assertEquals('t', (char) Index.key(index0), "key 0");
                 assertTrue(Index.completeKey(index0), "key complete 0");
+
+                final int index1 = node.index(1);
+                assertEquals('r', (char) Index.key(index1), "key 1");
+                assertTrue(Index.completeKey(index1), "key complete 1");
             }
         );
     }
