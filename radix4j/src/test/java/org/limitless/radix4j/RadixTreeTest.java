@@ -3,6 +3,8 @@ package org.limitless.radix4j;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import static org.limitless.radix4j.Node.Header;
@@ -77,6 +79,23 @@ public class RadixTreeTest {
     }
 
     @Test
+    public void addWithOffset() {
+        final var tree = new RadixTree();
+        final byte[] strings = "cat bison dog crow".getBytes();
+        assertTrue(tree.add(0, 3, strings));
+        assertTrue(tree.add(4,5, strings));
+        assertTrue(tree.add(10,3, strings));
+        assertTrue(tree.add(14,4, strings));
+        tree.forEach(System.out::println);
+
+        assertEquals(4, tree.size());
+        assertTrue(tree.contains("cat"));
+        assertTrue(tree.contains("dog"));
+        assertTrue(tree.contains("crow"));
+        assertTrue(tree.contains("bison"));
+    }
+
+    @Test
     public void treeWithOneSegment() {
         final var tree = new RadixTree();
         final int count = 500_000;
@@ -93,6 +112,15 @@ public class RadixTreeTest {
             assertTrue(tree.remove(str), str);
         }
         assertEmpty(tree);
+    }
+
+    @Test
+    public void clearTree() {
+        final var tree = new RadixTree();
+        addContains(tree, "test");
+        tree.clear();
+        assertEquals(0, tree.size());
+        addContains(tree, "test");
     }
 
     @Disabled
@@ -778,7 +806,6 @@ public class RadixTreeTest {
         assertEquals(empty, size == 0);
         assertEquals(size + 1, tree.size());
     }
-
 
     private static String getString(Node node) {
         final byte header = node.header();

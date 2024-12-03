@@ -38,20 +38,19 @@ public class Node extends BlockFlyweight {
         return BYTES;
     }
 
-    public int mismatch(final byte[] string, final int stringOffset, final int stringLength) {
+    public int mismatch(final int offset, final int length, final byte[] string) {
         final byte header = header();
         final int nodeLength = Header.stringLength(header);
-        final int remainingString = stringLength - stringOffset;
-        final int remaining = Math.min(remainingString, nodeLength);
+        final int remaining = Math.min(length, nodeLength);
         long str = nativeLong(HEADER_OFFSET);
         str >>>= 8;
         for (int i = 0; i < remaining; ++i) {
-            if ((str & Index.KEY_MASK) != string[i + stringOffset]) {
+            if ((str & Index.KEY_MASK) != string[i + offset]) {
                 return i;
             }
             str >>>= 8;
         }
-        if (remainingString == nodeLength && Header.completeString(header)) {
+        if (length == nodeLength && Header.completeString(header)) {
             return -1;
         }
         return remaining;
@@ -131,7 +130,6 @@ public class Node extends BlockFlyweight {
 
     public void string(final byte[] string, final int position, final int stringLength) {
         final int length = Math.min(STRING_LENGTH, stringLength);
-        header(Header.stringLength(header(), length));
         if (length >= 1) {
             nativeByteArray(position, string, STRING_OFFSET, length);
         }

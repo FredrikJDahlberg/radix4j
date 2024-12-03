@@ -18,11 +18,13 @@ public class RadixTree {
 
     private static final int INITIAL_PATH_SIZE = 32;
 
-    private final BlockPool<Node> pool;
-    private final Node root;
-    private final Node child;
-    private final Node parent;
-    private final Search search;
+    private final int blocksPerSegment;
+
+    private BlockPool<Node> pool;
+    private Node root;
+    private Node child;
+    private Node parent;
+    private Search search;
 
     private int size;
     private int allocatedBlocks;
@@ -35,15 +37,12 @@ public class RadixTree {
         if (blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCK_COUNT) {
             throw new InvalidParameterException("invalid number of blocks per segment");
         }
-        pool = new BlockPool.Builder<>(Arena.ofShared(), Node.class).blocksPerSegment(blocksPerSegment).build();
-        parent = allocate(new Node());
-        root = allocate(new Node());
-        child = allocate(new Node());
-        search = new Search(allocate(new Node()), allocate(new Node()));
+        this.blocksPerSegment = blocksPerSegment;
+        initiate(blocksPerSegment);
     }
 
     /**
-     * Add a string to the collection.
+     * Add a string to the tree
      * @param string value
      * @return true when value is inserted
      */
@@ -52,23 +51,38 @@ public class RadixTree {
     }
 
     /**
-     * Add a string to the collection.
+     * Add a string to the tree.
      * @param string value
      * @return true when value is inserted
      */
     public boolean add(final byte[] string) {
+        return add(0, string.length, string);
+    }
+
+    /**
+     * Add string to the tree.
+     * @param offset data offset
+     * @param length data length
+     * @param string value
+     * @return treu when value is inserted
+     */
+    public boolean add(final int offset, final int length, final byte[] string) {
+        if (length <= 0) {
+            return false;
+        }
+
         final byte header = root.header();
         if (Header.stringLength(header) == 0 && Header.indexCount(header) == 0) {
-            addString(string.length, string, 0, search.found.wrap(root));
+            addString(offset, length, string, search.found.wrap(root));
             ++size;
             return true;
         }
-        if (!search.mismatch(pool, root, string, string.length, false)) {
+        if (!search.mismatch(offset, length, string, false, root, pool)) {
             return false;
         }
+        addString(search.position + offset, length - search.position, string, search);
         ++size;
 
-        addString(search.position, string.length, string, search);
         return true;
     }
 
@@ -90,12 +104,25 @@ public class RadixTree {
      * @return true if the string is present
      */
     public boolean contains(final byte[] string) {
-        return !search.mismatch(pool, root, string, string.length, false);
+        return contains(0, string.length, string);
     }
+
+    /**
+     * Check the value presence
+     * @param offset value offset
+     * @param length value length
+     * @param string value
+     * @return true when string is present
+     */
+    public boolean contains(final int offset, final int length, final byte[] string) {
+        return !search.mismatch(offset, length, string, false, root, pool);
+    }
+
 
     /**
      * Remove string form collection
      * @param string value
+     * @return true if removed
      */
     public boolean remove(final String string) {
         return remove(string.getBytes());
@@ -104,9 +131,21 @@ public class RadixTree {
     /**
      * Remove string form collection
      * @param string value
+     * @return true if removed
      */
     public boolean remove(final byte[] string) {
-        if (isEmpty() || search.mismatch(pool, root, string, string.length, true)) {
+        return remove(0, string.length, string);
+    }
+
+    /**
+     * Remove string from tree
+     * @param offset value offset
+     * @param length value length
+     * @param string value
+     * @return if removed
+     */
+    public boolean remove(final int offset, final int length, final byte[] string) {
+        if (isEmpty() || search.mismatch(offset, length, string, true, root, pool)) {
             return false;
         }
         --size;
@@ -164,9 +203,17 @@ public class RadixTree {
     }
 
     /**
-     * Erase all elements in the collection
+     * Resets the tree to its inital state.
      */
     public void clear() {
+        pool.close();
+        initiate(blocksPerSegment);
+    }
+
+    /**
+     * Destroys the backing memory store.
+     */
+    public void close() {
         size = 0;
         pool.close();
     }
@@ -192,6 +239,16 @@ public class RadixTree {
 
         parent.wrap(root);
         forEach(parent, consumer);
+    }
+
+    private void initiate(final int blocksPerSegment) {
+        size = 0;
+        allocatedBlocks = 0;
+        pool = new BlockPool.Builder<>(Arena.ofShared(), Node.class).blocksPerSegment(blocksPerSegment).build();
+        parent = allocate(new Node());
+        root = allocate(new Node());
+        child = allocate(new Node());
+        search = new Search(allocate(new Node()), allocate(new Node()));
     }
 
     private void forEach(final Node node, final Consumer<Node> consumer) {
@@ -224,36 +281,34 @@ public class RadixTree {
         return "RadixTree{ size = " + size + ", bytes = " + pool.allocatedBytes() + " }";
     }
 
-    private void addString(final int offset, final int length, final byte[] string, final Search context) {
-        final byte foundHeader = context.found.header();
+    private void addString(final int offset, final int length, final byte[] string, final Search search) {
+        final byte foundHeader = search.found.header();
         final int nodeLength = Header.stringLength(foundHeader);
-        final int remainingNode = nodeLength - context.mismatch;
-        int remainingString = length - offset;
+        final int remaining = nodeLength - search.mismatch;
         int consumed = 0;
-        final byte key = remainingString >= 1 ? string[offset] : context.key;
-        switch (context.mismatchType) {
+        final byte key = length >= 1 ? string[offset] : search.key;
+        switch (search.mismatchType) {
             case Search.COMMON_PREFIX:
-                consumed = splitNode(remainingNode, key, offset, remainingString, context.found,
-                    context.mismatch);
+                consumed = splitNode(remaining, key, search.keyPos, length, search.found, search.mismatch);
                 break;
             case Search.NO_COMMON_PREFIX:
-                addParent(remainingNode, key, remainingString, context);
+                addParent(remaining, key, length, search);
                 consumed = 1;
                 break;
             case Search.SUBSTRING:
-                context.found.header(Header.completeString(foundHeader, true));
+                search.found.header(Header.completeString(foundHeader, true));
                 break;
             case Search.MISSING_KEY:
-                consumed = addKey(remainingString, key, context.keyPos, context.found);
+                consumed = addKey(length, key, search.keyPos, search.found);
                 break;
             case Search.COMMON_PREFIX_AND_KEY:
-                addChild(context.key, context.keyPos, context.found);
+                addChild(search.key, search.keyPos, search.found);
                 break;
             default:
                 break;
         }
-        if (remainingString - consumed >= 1) {
-            addString(remainingString - consumed, string, offset + consumed, context.found);
+        if (length - consumed >= 1) {
+            addString(offset + consumed, length - consumed, string, search.found);
         }
     }
 
@@ -332,18 +387,18 @@ public class RadixTree {
 
     }
 
-    private int addKey(final int length, final byte key, final int keyPos, final Node found) {
-        final int offset = length >= 2 ? allocate(parent).offset() : 0;
+    private int addKey(final int remaining, final byte key, final int keyPos, final Node found) {
+        final int offset = remaining >= 2 ? allocate(parent).offset() : 0;
         final byte foundHeader = found.header();
         final int count = Header.indexCount(foundHeader);
         final int consumed;
         if (count < MAX_INDEX_COUNT) {
-            if (length == 0) {
+            if (remaining == 0) {
                 final int index = found.index(keyPos);
                 found.index(keyPos, Index.completeKey(index, true));
                 consumed = 0;
             } else {
-                found.addIndex(key, offset, length == 1);
+                found.addIndex(key, offset, remaining == 1);
                 consumed = 1;
             }
         } else {
@@ -364,7 +419,7 @@ public class RadixTree {
         return consumed;
     }
 
-    private void addString(final int length, final byte[] string, final int offset, final Node found) {
+    private void addString(final int offset, final int length, final byte[] string, final Node found) {
         int remaining = length;
         int position = offset;
         while (remaining >= 1) {
@@ -438,19 +493,19 @@ public class RadixTree {
 
         /**
          * Find the insertion point for a new string
-         * @param pool block pool
-         * @param string UTF-8 bytes
          * @param length string length
-         * @param root the insertion point data
+         * @param string bytes
+         * @param root   the insertion point data
+         * @param pool   block pool
          * @return true when mismatch exists
          */
-        private boolean mismatch(final BlockPool<Node> pool,
-                                 final Node root,
+        private boolean mismatch(final int offset, int length,
                                  final byte[] string,
-                                 final int length,
-                                 final boolean withPath) {
-            mismatch = 0;
+                                 final boolean withPath,
+                                 final Node root,
+                                 final BlockPool<Node> pool) {
             position = 0;
+            mismatch = 0;
             key = NOT_FOUND;
             keyPos = NOT_FOUND;
             mismatchType = TYPE_NULL;
@@ -461,18 +516,17 @@ public class RadixTree {
             pathCount = 1;
 
             boolean processString = true;
-            int remaining = length;
             byte foundHeader = found.header();
             int nodeLength = Header.stringLength(foundHeader);
-            while (remaining >= 1) {
+            while (length >= 1) {
                 if (processString) {
                     if (nodeLength >= 1) {
-                        mismatch = found.mismatch(string, position, length);
+                        mismatch = found.mismatch(position + offset, length, string);
                         if (mismatch == -1) {
                             key = EMPTY_KEY;
                             return false;
                         }
-                        remaining -= mismatch;
+                        length -= mismatch;
                         position += mismatch;
                     }
                     if (mismatch < nodeLength) {
@@ -483,7 +537,7 @@ public class RadixTree {
                 } else {
                     mismatchType = MISSING_KEY;
                     final int count = Header.indexCount(foundHeader);
-                    final int foundPos = found.position(count, string[position]);
+                    final int foundPos = found.position(count, string[position + offset]);
                     if (foundPos == NOT_FOUND) {
                         return true;
                     }
@@ -492,9 +546,9 @@ public class RadixTree {
                     keyPos = foundPos;
                     key = Index.key(foundIndex);
                     if (key != EMPTY_KEY) {  // empty keys do not advance the input string
-                        --remaining;
+                        --length;
                         ++position;
-                        if (remaining == 0) {
+                        if (length == 0) {
                             return !Index.completeKey(foundIndex);
                         }
                         processString = true;
@@ -517,7 +571,7 @@ public class RadixTree {
                     }
                 }
             }
-            if (mismatch == nodeLength && remaining == 0) {
+            if (mismatch == nodeLength && length == 0) {
                 mismatchType = SUBSTRING;
             }
             keyPos = -1;
