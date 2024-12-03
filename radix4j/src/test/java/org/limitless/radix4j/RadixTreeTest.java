@@ -344,18 +344,10 @@ public class RadixTreeTest {
                 assertEquals('7', (char) Index.key(node.index(2)));
                 assertEquals('8', (char) Index.key(node.index(3)));
             },
-            node -> {
-                assertEquals("0", getString(node));
-            },
-            node -> {
-                assertEquals("0", getString(node));
-            },
-            node -> {
-                assertEquals("0", getString(node));
-            },
-            node -> {
-                assertEquals("0", getString(node));
-            }
+            node -> assertEquals("0", getString(node)),
+            node -> assertEquals("0", getString(node)),
+            node -> assertEquals("0", getString(node)),
+            node -> assertEquals("0", getString(node))
         );
     }
 
@@ -704,7 +696,7 @@ public class RadixTreeTest {
         assertEmpty(tree);
         assertTrue(tree.add("cat"));
         assertTrue(tree.contains("cat"));
-        assertTrue(!tree.isEmpty());
+        assertFalse(tree.isEmpty());
         assertEquals(1, tree.size());
     }
 

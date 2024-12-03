@@ -137,7 +137,7 @@ public class RadixTree {
             free(found);
 
             for (int i = search.pathCount - 2; i >= 0; --i) {
-                pool.get(addressFromOffset(search.pathOffsets[i]), found);
+                pool.get(Address.fromOffset(search.pathOffsets[i]), found);
 
                 header = found.header();
                 final int count = Header.indexCount(header);
@@ -201,14 +201,13 @@ public class RadixTree {
         forEach(parent, consumer);
     }
 
-
     private void forEach(final Node node, final Consumer<Node> consumer) {
         search.pathOffsets[0] = node.offset();
         ++search.pathCount;
 
         while (search.pathCount >= 1) {
             final int nodeOffset = search.pathOffsets[--search.pathCount];
-            final long address = addressFromOffset(nodeOffset);
+            final long address = Address.fromOffset(nodeOffset);
             pool.get(address, node);
 
             consumer.accept(node);
@@ -350,9 +349,12 @@ public class RadixTree {
                 found.index(keyPos, Index.completeKey(index, true));
                 consumed = 0;
             } else {
+                found.addIndex(count, key, offset, length == 1);
+                /*
                 found
                     .header(Header.indexCount(foundHeader, count + 1))
                     .index(count, key, offset, length == 1);
+                */
                 consumed = 1;
             }
         } else {
@@ -507,7 +509,7 @@ public class RadixTree {
                         if (withPath) {
                             updatePath(childOffset, foundPos);
                         }
-                        pool.get(addressFromOffset(childOffset), found);
+                        pool.get(Address.fromOffset(childOffset), found);
                         foundHeader = found.header();
                         nodeLength = Header.stringLength(foundHeader);
                     } else {
