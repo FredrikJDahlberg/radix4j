@@ -7,8 +7,6 @@ import java.lang.foreign.MemorySegment;
 
 public class Node extends BlockFlyweight {
 
-    private static final int[] SHELL_SORT_GAPS = { 5,3,1 };
-
     protected static final int NOT_FOUND = -1;
     protected static final int EMPTY_BLOCK = 0;
     protected static final byte EMPTY_KEY = 0;
@@ -61,7 +59,6 @@ public class Node extends BlockFlyweight {
         final int count = Header.indexCount(header);
         header(Header.indexCount(header, count + 1));
         index(count, key, offset, complete);
-        // sortIndices(count + 1);
         return this;
     }
 
@@ -70,7 +67,6 @@ public class Node extends BlockFlyweight {
         final int newCount = Header.indexCount(header) - 1;
         if (position != newCount) {
             index(position, index(newCount));
-            // sortIndices(newCount);
         }
         header(Header.indexCount(header, newCount));
     }
@@ -199,40 +195,6 @@ public class Node extends BlockFlyweight {
     @Override
     public String toString() {
         return append(new StringBuilder(64)).toString();
-    }
-
-    private void sortIndices(final int count) {
-        for (int gap : SHELL_SORT_GAPS) {
-            for (int i = gap; i < count; ++i) {
-                final int value = index(i);
-                int j = i;
-                while (j >= gap && Index.key(index(j - gap)) > Index.key(value)) {
-                    index(j, index(j - gap));
-                    j -= gap;
-                }
-                index(j, value);
-            }
-        }
-    }
-
-    private int findIndex(final int count, final int key) {
-        int first = 0;
-        int length = count;
-        while (length >= 1) {
-            final int remainder = length & 1;
-            length >>>= 1;
-            if (Index.key(index(first + length)) < key) {
-                first += length + remainder;
-            }
-        }
-        if (Index.key(index(0)) == 0)
-        {
-            return 0;
-        }
-        if (Index.key(index(first)) != key) {
-            return NOT_FOUND;
-        }
-        return first;
     }
 
     public static final class Address {

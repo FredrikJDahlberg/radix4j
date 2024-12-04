@@ -64,7 +64,7 @@ public class RadixTree {
      * @param offset data offset
      * @param length data length
      * @param string value
-     * @return treu when value is inserted
+     * @return true when value is inserted
      */
     public boolean add(final int offset, final int length, final byte[] string) {
         if (length <= 0) {
@@ -203,7 +203,7 @@ public class RadixTree {
     }
 
     /**
-     * Resets the tree to its inital state.
+     * Resets the tree to its initial state.
      */
     public void clear() {
         pool.close();
