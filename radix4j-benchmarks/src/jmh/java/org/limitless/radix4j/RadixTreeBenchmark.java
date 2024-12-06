@@ -5,97 +5,166 @@ import org.openjdk.jmh.annotations.*;
 import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
 
-@Fork(value = 5)
-@Warmup(iterations = 5, batchSize = 1_000_000)
-@Measurement(iterations = 5, batchSize = 1_000_000)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
 @State(Scope.Thread)
-@BenchmarkMode(Mode.SingleShotTime)
+@Fork(jvmArgs = "-server", value = 1)
+@Warmup(time = 5, timeUnit = TimeUnit.SECONDS)
+@Measurement(time = 5, timeUnit = TimeUnit.SECONDS)
+@BenchmarkMode(Mode.Throughput)
+@OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class RadixTreeBenchmark {
 
-    @State(Scope.Benchmark)
-    public static class TreeState {
-        RadixTree fullTree;
-        RadixTree emptyTree;
-        String[] strings;
-        int count;
-        int failed;
+    private static final byte[] STRING = "ABCDEFGHI0000000".getBytes();
+    private static final int STRING_LENGTH = STRING.length;
 
-        HashSet<String> fullSet;
-        HashSet<String> emptySet;
+    public static final int SIZE = 10_000_000;
 
-        public TreeState() {
-            strings = new String[1_000_000];
-            fullTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
-            emptyTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
-            fullSet = new HashSet<>(1_000_000);
-            emptySet = new HashSet<>(1_000_000);
+    private byte[] strings = new byte[SIZE * STRING_LENGTH];
+
+    public RadixTreeBenchmark() {
+        int offset = 0;
+
+        for (int i = 0; i < SIZE; ++i) {
+            System.arraycopy(STRING, 0, strings, offset, STRING_LENGTH);
+            offset += STRING_LENGTH;
+            intToChars(i, offset, 6, strings, 8);
         }
+    }
+
+    //
+    // Radix tree
+    //
+    @State(Scope.Benchmark)
+    public static class EmptyTree {
+        final RadixTree tree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
+        int stringOffset = 0;
     }
 
     @Setup(Level.Iteration)
-    public void setup(final TreeState state) {
-        state.failed = 0;
-        state.count = 0;
-        state.fullTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
-        state.emptyTree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
-        state.emptySet.clear();
-        state.fullSet.clear();
-        final String prefix = "12345678901234567890";
-        for (int i = 0; i < 1_000_000; ++i) {
-            state.strings[i] = prefix + i;
-            state.fullTree.add(state.strings[i]);
-            state.fullSet.add(state.strings[i]);
+    public void setupEmptyTree(EmptyTree state) {
+        state.stringOffset = 0;
+    }
+
+    @State(Scope.Benchmark)
+    public static class FullTree {
+        final RadixTree tree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
+        int stringOffset = 0;
+    }
+
+    @Benchmark
+    public boolean radixTreeAdd(final EmptyTree state) {
+        final boolean result = state.tree.add(state.stringOffset, STRING_LENGTH, strings);
+        state.stringOffset = (state.stringOffset + STRING_LENGTH) % strings.length;
+        return result;
+    }
+
+    @Setup(Level.Iteration)
+    public void setupFullTree(final FullTree state) {
+        state.stringOffset = 0;
+        for (int offset = 0; offset < strings.length; offset += STRING_LENGTH) {
+            state.tree.add(offset, STRING_LENGTH, strings);
         }
     }
 
-    @TearDown(Level.Iteration)
-    public void tearDown(final TreeState state) {
-        if (state.failed >= 1) {
-            System.out.println("failed = " + state.failed);
-        }
-        state.failed = 0;
-        state.count = 0;
-        state.fullSet.clear();
-        state.emptySet.clear();
-    }
-
     @Benchmark
-    public String baseline(final TreeState state) {
-        return state.strings[state.count++];
-    }
-
-    @Benchmark
-    public boolean radixTreeAdd(final TreeState state) {
-        return state.emptyTree.add(state.strings[state.count++]);
-    }
-
-    @Benchmark
-    public boolean radixTreeContains(final TreeState state) {
-        return state.fullTree.contains(state.strings[state.count++]);
-    }
-
-    @Benchmark
-    public boolean radixTreeRemove(final TreeState state) {
-        return state.fullTree.remove(state.strings[state.count++]);
-    }
-
-    @Benchmark
-    public boolean hashSetAdd(final TreeState state) {
-        final boolean result = state.fullSet.add(state.strings[state.count++]);
-        if (!result) {
-            ++state.failed;
-        }
+    public boolean radixTreeContains(final FullTree state) {
+        final boolean result = state.tree.contains(state.stringOffset, STRING_LENGTH, strings);
+        state.stringOffset = (state.stringOffset + STRING_LENGTH) % strings.length;
         return result;
     }
 
     @Benchmark
-    public boolean hashSetContains(final TreeState state) {
-        return state.fullSet.contains(state.strings[state.count++]);
+    public boolean radixTreeRemove(final FullTree state) {
+        final boolean result = state.tree.remove(state.stringOffset, STRING_LENGTH, strings);
+        state.stringOffset = (state.stringOffset + STRING_LENGTH) % strings.length;
+        return result;
+    }
+
+    //
+    // Hash set
+    //
+    @State(Scope.Benchmark)
+    public static class HashSetState {
+        HashSet<Integer> set = new HashSet<>(SIZE);
+        int stringOffset = 0;
+        int failed = 0;
+        int count = 0;
+    }
+
+    @Setup(Level.Iteration)
+    public void setupHashSet(HashSetState state) {
+        state.stringOffset = 0;
+        state.failed = 0;
+        state.count = 0;
+        state.set.clear();
+    }
+
+    @TearDown(Level.Iteration)
+    public void teardownHashSet(final HashSetState state) {
+        if (state.failed >= 1) {
+            System.out.println("Failed = " + state.failed);
+        }
+    }
+
+    @State(Scope.Benchmark)
+    public static class FullHashSetState {
+        HashSet<Integer> set = new HashSet<>(SIZE);
+        int stringOffset = 0;
+    }
+
+    @Setup(Level.Iteration)
+    public void setupFullHashSet(final FullHashSetState state) {
+        state.stringOffset = 0;
+        state.set.clear();
+        for (int offset = 0; offset < strings.length; offset += STRING_LENGTH) {
+            final int hashCode = hashCode(0, strings, offset, STRING_LENGTH);
+            state.set.add(hashCode);
+        }
     }
 
     @Benchmark
-    public boolean hashSetRemove(final TreeState state) {
-        return state.fullSet.remove(state.strings[state.count++]);
+    public boolean hashSetAdd(final HashSetState state) {
+        final int hashCode = hashCode(0, strings, state.stringOffset, STRING_LENGTH);
+        state.stringOffset = (state.stringOffset + STRING_LENGTH) % strings.length;
+        final boolean success = state.set.add(hashCode);
+        if (++state.count < SIZE && !success) {
+            ++state.failed;
+        }
+        return success;
+    }
+
+    @Benchmark
+    public boolean hashSetContains(final FullHashSetState state) {
+        final int hashCode = hashCode(0, strings, state.stringOffset, STRING_LENGTH);
+        state.stringOffset = (state.stringOffset + STRING_LENGTH) % strings.length;
+        return state.set.contains(hashCode);
+    }
+
+    @Benchmark
+    public boolean hashSetRemove(final FullHashSetState state) {
+        final int hashCode = hashCode(0, strings, state.stringOffset, STRING_LENGTH);
+        state.stringOffset = (state.stringOffset + STRING_LENGTH) % strings.length;
+        return state.set.remove(hashCode);
+    }
+
+    //
+    // Helpers
+    //
+    public static int hashCode(int result, byte[] a, int fromIndex, int length) {
+        int end = fromIndex + length;
+        for (int i = fromIndex; i < end; i++) {
+            result = 31 * result + a[i];
+        }
+        return result;
+    }
+
+    public static void intToChars(int value, int offset, int length, final byte[] bytes, final int suffix) {
+        int pos = offset + length - suffix;
+        while (value >= 10) {
+            final int result = value / 10;
+            final int digit = value % 10;
+            bytes[--pos] = (byte) ('0' + digit);
+            value = result;
+        }
+        bytes[--pos] = (byte) ('0' + value);
     }
 }

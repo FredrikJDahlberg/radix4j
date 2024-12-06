@@ -1,7 +1,6 @@
 package org.limitless.radix4j;
 
 import org.limitless.fsmp4j.BlockFlyweight;
-import org.limitless.fsmp4j.ByteUtils;
 
 import java.lang.foreign.MemorySegment;
 
@@ -11,16 +10,25 @@ public class Node extends BlockFlyweight {
     protected static final int EMPTY_BLOCK = 0;
     protected static final byte EMPTY_KEY = 0;
 
-    protected static final int MAX_INDEX_COUNT = 14;
+    protected static final int INDEX_COUNT = 11;
+    protected static final int KEY_LENGTH = 1;
 
     // node byte layout
     protected static final int HEADER_OFFSET = 0;
     protected static final int HEADER_LENGTH = 1;
     protected static final int STRING_OFFSET = HEADER_OFFSET + HEADER_LENGTH;
-    protected static final int STRING_LENGTH = 7;
-    protected static final int INDEX_OFFSET = STRING_OFFSET + STRING_LENGTH;
-    protected static final int INDEX_LENGTH = MAX_INDEX_COUNT * Index.BYTES;
-    protected static final int BYTES = INDEX_OFFSET + INDEX_LENGTH;
+    protected static final int STRING_LENGTH = 5;
+    protected static final int INCLUDE_OFFSET = STRING_OFFSET + STRING_LENGTH;
+    protected static final int INCLUDE_LENGTH = 2;
+    protected static final int INDEX_OFFSET = INCLUDE_OFFSET + INCLUDE_LENGTH;
+    protected static final int INDEX_LENGTH = INDEX_COUNT * Integer.BYTES;
+    protected static final int KEYS_OFFSET = INDEX_OFFSET + INDEX_LENGTH;
+    protected static final int KEYS_LENGTH = INDEX_COUNT * KEY_LENGTH;
+    protected static final int PAD_OFFSET = KEYS_OFFSET + KEYS_LENGTH;
+    protected static final int PAD_LENGTH = 1;
+    protected static final int BYTES = PAD_OFFSET + PAD_LENGTH;
+
+    private static final int KEY_MASK = 0xff;
 
     public int offset() {
         return (int) Address.toOffset(segment(), super.block());
@@ -43,12 +51,12 @@ public class Node extends BlockFlyweight {
         long str = nativeLong(HEADER_OFFSET);
         str >>>= 8;
         for (int i = 0; i < remaining; ++i) {
-            if ((str & Index.KEY_MASK) != string[i + offset]) {
+            if ((str & KEY_MASK) != string[i + offset]) {
                 return i;
             }
             str >>>= 8;
         }
-        if (length == nodeLength && Header.completeString(header)) {
+        if (length == nodeLength && Header.includeString(header)) {
             return -1;
         }
         return remaining;
@@ -66,6 +74,8 @@ public class Node extends BlockFlyweight {
         final byte header = header();
         final int newCount = Header.indexCount(header) - 1;
         if (position != newCount) {
+            key(position, key(newCount));
+            includeKey(position, includeKey(newCount));
             index(position, index(newCount));
         }
         header(Header.indexCount(header, newCount));
@@ -84,8 +94,34 @@ public class Node extends BlockFlyweight {
         byte header;
         header = Header.stringLength(0, length);
         header = Header.indexCount(header, count);
-        header = Header.completeString(header, complete);
+        header = Header.includeString(header, complete);
         header(header);
+        return this;
+    }
+
+    public byte key(final int position) {
+        return nativeByte(KEYS_OFFSET + position);
+    }
+
+    public Node key(final int position, final byte value) {
+        nativeByte(KEYS_OFFSET + position, value);
+        return this;
+    }
+
+    public boolean includeKey(final int position) {
+        return (nativeByte(INCLUDE_OFFSET + position / Byte.SIZE) & (1 << position % Byte.SIZE)) != 0;
+    }
+
+    public Node includeKey(final int position, final boolean include) {
+        final int index = position / Byte.SIZE;
+        byte flag = (byte) (1 << (position % Byte.SIZE));
+        byte includes = nativeByte(INCLUDE_OFFSET + index);
+        if (include) {
+            includes |= flag;
+        } else {
+            includes &= (byte) ~flag;
+        }
+        nativeByte(INCLUDE_OFFSET + index, includes);
         return this;
     }
 
@@ -98,26 +134,21 @@ public class Node extends BlockFlyweight {
         return this;
     }
 
-    public Node index(final int position, final byte key, final int block, boolean complete) {
-        final int index = Index.key(0, key) | Index.completeKey(0, complete) |
-            Index.offset(0, block);
-        nativeInt(INDEX_OFFSET + position * Integer.BYTES, index);
+    public Node index(final int position, final byte key, final int block, boolean include) {
+        key(position, key);
+        index(position, block);
+        includeKey(position, include);
         return this;
     }
 
-    public int position(final int count, final byte key) {
-        if (count == 0) {
-            return NOT_FOUND;
-        }
-
+    public int keyPosition(final int count, final byte key) {
         int found = NOT_FOUND;
         for (int i = 0; i < count; ++i) {
-            final int index = index(i);
-            final byte indexKey = Index.key(index);
-            if (indexKey == key) {
+            final byte nodeKey = key(i);
+            if (nodeKey == key) {
                 return i;
             }
-            if (indexKey == EMPTY_KEY) {
+            if (nodeKey == EMPTY_KEY) {
                 found = i;
             }
         }
@@ -131,7 +162,7 @@ public class Node extends BlockFlyweight {
         }
     }
 
-    public void string(byte[] string) {
+    public void string(final byte[] string) {
         final byte header = header();
         nativeByteArray(STRING_OFFSET, Header.stringLength(header), string);
     }
@@ -170,7 +201,7 @@ public class Node extends BlockFlyweight {
             builder.append(new String(bytes, 0, stringLength));
         }
         builder.append('\"');
-        if (Header.completeString(header)) {
+        if (Header.includeString(header)) {
             builder.append('!');
         }
 
@@ -179,11 +210,11 @@ public class Node extends BlockFlyweight {
             builder.append(" [");
             for (int i = 0; i < count; ++i) {
                 final int index = index(i);
-                builder.append((char) Index.key(index));
-                if (Index.completeKey(index)) {
+                builder.append((char) key(i));
+                if (includeKey(i)) {
                     builder.append('!');
                 } else {
-                    builder.append('=').append(Index.offset(index));
+                    builder.append('=').append(index(i));
                 }
                 builder.append(',').append(' ');
             }
@@ -203,19 +234,23 @@ public class Node extends BlockFlyweight {
         private static final int BLOCK_OFFSET_BITS = 0;
         private static final int BLOCK_LENGTH_BITS = 16;
         private static final int SEGMENT_OFFSET_BITS = BLOCK_OFFSET_BITS + BLOCK_LENGTH_BITS;
-        private static final int SEGMENT_LENGTH_BITS = 8;
+        private static final int SEGMENT_LENGTH_BITS = 16;
+        private static final int SIZE = SEGMENT_OFFSET_BITS + SEGMENT_LENGTH_BITS;
 
         private static final int BLOCK_MASK = -1 >>> (Integer.SIZE - BLOCK_LENGTH_BITS);
         private static final int SEGMENT_MASK = -1 >>> (Integer.SIZE - SEGMENT_LENGTH_BITS);
 
+        public static final int MAX_BLOCKS = 1 << BLOCK_LENGTH_BITS;
+        public static final int MAX_SEGMENTS = 1 << SEGMENT_LENGTH_BITS;
+
         public static long fromOffset(final int offset) {
             int segment = ((offset >>> SEGMENT_OFFSET_BITS) & SEGMENT_MASK) + 1;
             int block = (offset >>> BLOCK_OFFSET_BITS) & BLOCK_MASK;
-            return ByteUtils.pack(segment, block);
+            return ((long) segment) << Integer.SIZE | block;
         }
 
         public static long toOffset(int segment, int block) {
-            return ((SEGMENT_MASK & segment) << SEGMENT_OFFSET_BITS) | ((BLOCK_MASK & block) << BLOCK_OFFSET_BITS);
+            return ((long) (SEGMENT_MASK & segment) << SEGMENT_OFFSET_BITS) | ((BLOCK_MASK & block) << BLOCK_OFFSET_BITS);
         }
     }
 
@@ -234,11 +269,11 @@ public class Node extends BlockFlyweight {
         private static final byte INDEX_COUNT_MASK = 0xff >>> (Byte.SIZE - INDEX_COUNT_LENGTH);
         private static final byte STRLEN_MASK = 0xff >>> (Byte.SIZE - STRLEN_LENGTH);
 
-        public static boolean completeString(final byte header) {
+        public static boolean includeString(final byte header) {
             return ((header >>> STRING_COMPLETE_OFFSET) & STRING_COMPLETE_MASK) != 0;
         }
 
-        public static byte completeString(final byte header, final boolean value) {
+        public static byte includeString(final byte header, final boolean value) {
             if (value) {
                 return (byte) (header | (STRING_COMPLETE_MASK << STRING_COMPLETE_OFFSET));
             } else {
@@ -260,52 +295,6 @@ public class Node extends BlockFlyweight {
 
         public static byte stringLength(final int header, final int length) {
             return (byte) ((header & ~(STRLEN_MASK << STRLEN_OFFSET)) | ((length & STRLEN_MASK) << STRLEN_OFFSET));
-        }
-    }
-
-    // index helpers
-    public static final class Index {
-
-        // index bit layout
-        private static final int BLOCK_OFFSET = 0;
-        private static final int BLOCK_LENGTH = 24;
-        private static final int KEY_COMPLETE_OFFSET = BLOCK_OFFSET + BLOCK_LENGTH;
-        private static final int KEY_COMPLETE_LENGTH = 1;
-        private static final int KEY_OFFSET = KEY_COMPLETE_OFFSET + KEY_COMPLETE_LENGTH;
-        private static final int KEY_LENGTH = 7;
-        private static final int INDEX_LENGTH = KEY_OFFSET + KEY_LENGTH;
-        private static final int BYTES = INDEX_LENGTH / Byte.SIZE;
-
-        private static final int KEY_COMPLETE_MASK = -1 >>> (Integer.SIZE - KEY_COMPLETE_LENGTH);
-        private static final int KEY_MASK = -1 >>> (Integer.SIZE - KEY_LENGTH);
-        private static final int BLOCK_MASK = -1 >>> (Integer.SIZE - BLOCK_LENGTH);
-
-        public static boolean completeKey(final int index) {
-            return (index & (KEY_COMPLETE_MASK << KEY_COMPLETE_OFFSET)) != 0;
-        }
-
-        public static int completeKey(int index, boolean value) {
-            if (value) {
-                return index | (KEY_COMPLETE_MASK << KEY_COMPLETE_OFFSET);
-            } else {
-                return index & ~(KEY_COMPLETE_MASK << KEY_COMPLETE_OFFSET);
-            }
-        }
-
-        public static int offset(final int index) {
-            return (index >>> BLOCK_OFFSET) & BLOCK_MASK;
-        }
-
-        public static int offset(final int segment, final int block) {
-            return (segment & ~(BLOCK_MASK << BLOCK_OFFSET)) | ((block & BLOCK_MASK) << BLOCK_OFFSET);
-        }
-
-        public static byte key(final int index) {
-            return (byte) ((index >>> KEY_OFFSET) & KEY_MASK);
-        }
-
-        public static int key(final int index, final byte key) {
-            return (index & ~(KEY_MASK << KEY_OFFSET) | ((key & KEY_MASK) << KEY_OFFSET));
         }
     }
 }
