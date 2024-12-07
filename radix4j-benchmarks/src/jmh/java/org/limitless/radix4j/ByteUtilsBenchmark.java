@@ -22,9 +22,9 @@ public class ByteUtilsBenchmark {
 
     @State(Scope.Thread)
     public static class ByteUtilsState {
-        long keys = 0x4847464544434241L;
+        final long keys = 0x4847464544434241L;
         byte key;
-        byte[] string = "ABCDEFGH".getBytes();
+        final byte[] string = "ABCDEFGH".getBytes();
     }
 
     @Setup(Level.Iteration)

@@ -18,7 +18,7 @@ public class RadixTreeBenchmark {
 
     public static final int SIZE = 25_000_000;
     public static final int MAX = SIZE * STRING_LENGTH;
-    public byte[] strings = new byte[SIZE * STRING_LENGTH];
+    public static final byte[] strings = new byte[SIZE * STRING_LENGTH];
 
     public RadixTreeBenchmark() {
         int offset = 0;
@@ -136,7 +136,7 @@ public class RadixTreeBenchmark {
     @Setup(Level.Iteration)
     public void setupFullHashSet(final FullHashSetState state) {
         state.set =  new HashSet<>(SIZE);
-        state.setup();;
+        state.setup();
         for (int offset = 0; offset < strings.length; offset += STRING_LENGTH) {
             final int hashCode = ByteUtils.hashCode(1, strings, offset, STRING_LENGTH);
             state.set.add(hashCode);

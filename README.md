@@ -10,9 +10,9 @@ Build
 
 Build the project with [Gradle](http://gradle.org/) using this [build.gradle](https://github.com/fredrikjdahlberg/fixdec4j/blob/main/build.gradle) file.
 
-You require the following to build fixdec4j
+You require the following to build radix4j
 
-* The Latest release of Java 8. fsmp4j is tested with Java 8.
+* The Latest release of Java 23. radix4j is tested with Java 23.
 
 Full clean and build:
 

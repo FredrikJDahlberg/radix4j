@@ -26,7 +26,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void add1() {
+    public void splitLongerStringWithIncludedKey() {
         final var tree = new RadixTree();
         addContains(tree, "cabbage");
         addContains(tree, "cabs");
@@ -55,7 +55,7 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void add2() {
+    public void splitShorterStringWithIncludedKey() {
         final var tree = new RadixTree();
         addContains(tree, "cat");
         addContains(tree, "cabs");
@@ -295,7 +295,7 @@ public class RadixTreeTest {
                 final byte header = node.header();
                 assertEquals(1, Header.indexCount(header));
                 assertEquals("ABCDE", getString(node));
-                final int index0 = node.index(0);
+
                 assertEquals((byte) 'F', node.key(0));
                 assertFalse(node.includeKey(0));
             },
@@ -304,11 +304,9 @@ public class RadixTreeTest {
                 assertEquals(2, Header.indexCount(header));
                 assertEquals("G_", getString(node));
 
-                final int index0 = node.index(0);
                 assertTrue(node.includeKey(0));
                 assertEquals('H', node.key(0));
 
-                final int index1 = node.index(1);
                 assertTrue(node.includeKey(1));
                 assertEquals('I', node.key(1));
             }
