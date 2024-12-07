@@ -12,7 +12,7 @@ import static org.limitless.radix4j.Node.*;
 public class RadixTree {
 
     public static final int DEFAULT_BLOCK_COUNT = 256;
-    public static final int MAX_BLOCK_COUNT = Address.MAX_BLOCKS;
+    public static final int MAX_BLOCKS_PER_SEGMENT = Address.MAX_BLOCKS;
 
     private static final int INITIAL_PATH_SIZE = 32;
 
@@ -32,11 +32,15 @@ public class RadixTree {
     }
 
     public RadixTree(final int blocksPerSegment) {
-        if (blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCK_COUNT) {
+        if (blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCKS_PER_SEGMENT) {
             throw new InvalidParameterException("invalid number of blocks per segment");
         }
         this.blocksPerSegment = blocksPerSegment;
         initiate(blocksPerSegment);
+    }
+
+    public static RadixTree allocate(final int blocksPerSegment) {
+        return new RadixTree(blocksPerSegment);
     }
 
     /**
@@ -324,20 +328,19 @@ public class RadixTree {
         }
         final int position = context.keyPos;
         if (position >= 0) {
-            // int index = context.parent.index(position);
-            // boolean include = Index.includeKey(index);
-            // byte parentKey = Index.key(index);
             context.parent.index(position, parent.offset());
         }
 
         final byte foundHeader = found.header();
-        final int foundOffset = remainingNode == 1 && Header.indexCount(foundHeader) == 0 ? 0 : found.offset();
-        final int childOffset = remainingString >= 2 ? allocate(child).offset() : 0;
+        final int count = Header.indexCount(foundHeader);
+        final int foundOffset = remainingNode == 1 && count == 0 ? EMPTY_BLOCK : found.offset();
+        final int childOffset = remainingString >= 2 ? allocate(child).offset() : EMPTY_BLOCK;
         if (remainingNode >= 1) {
             final byte foundKey = found.string(0);
+            final boolean includeKey = Header.includeString(foundHeader) && Header.stringLength(foundHeader) == 1;
             parent
                 .header(0, false, 0)
-                .addIndex(foundKey, foundOffset, foundOffset == 0)
+                .addIndex(foundKey, foundOffset,  includeKey)
                 .addIndex(key, childOffset, remainingString == 1);
 
         }
@@ -360,8 +363,8 @@ public class RadixTree {
                           final int mismatch) {
         final byte foundHeader = found.header();
         final int count = Header.indexCount(foundHeader);
-        int parentOffset = 0;
-        if (remainingNode != 1 || remainingString != 1 || count != 0) {
+        int parentOffset = EMPTY_BLOCK;
+        if (remainingString != 1 || count >= 1) {
             parentOffset = allocate(parent).offset();
             parent.copy(found);
         }
@@ -369,17 +372,15 @@ public class RadixTree {
             parent.moveString(mismatch + 1, remainingNode - 1);
         } else {
             if (count == 1) {
-                byte foundKey = found.key(0);
-                parent
-                    .header(1, true, 0)
-                    .string(0, foundKey);
+                parent.header(1, true, 0);
+                parent.string(0, found.key(0));
             } else {
-                parent.header(Header.stringLength(parent.header(), 0));
+                parent.header(Header.clearStringLength(parent.header()));
             }
         }
         found
             .header(mismatch, remainingString == 0, 1)
-            .index(0, found.string(mismatch), parentOffset, remainingString == 1);
+            .index(0, found.string(mismatch), parentOffset, remainingNode == 1);
         return addKey(remainingString, key, keyPos, found);
     }
 
@@ -397,8 +398,6 @@ public class RadixTree {
         final int consumed;
         if (count < INDEX_COUNT) {
             if (remaining == 0) {
-                // final int index = found.index(keyPos);
-                // found.index(keyPos, Index.includeKey(index, true));
                 found.includeKey(keyPos, true);
                 consumed = 0;
             } else {

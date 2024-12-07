@@ -45,16 +45,16 @@ public class Node extends BlockFlyweight {
     }
 
     public int mismatch(final int offset, final int length, final byte[] string) {
-        final byte header = header();
+        long stringValue = nativeLong(HEADER_OFFSET);
+        final byte header = (byte) (stringValue & 0xff);
         final int nodeLength = Header.stringLength(header);
         final int remaining = Math.min(length, nodeLength);
-        long str = nativeLong(HEADER_OFFSET);
-        str >>>= 8;
+        stringValue >>>= 8;
         for (int i = 0; i < remaining; ++i) {
-            if ((str & KEY_MASK) != string[i + offset]) {
+            if ((stringValue & KEY_MASK) != string[i + offset]) {
                 return i;
             }
-            str >>>= 8;
+            stringValue >>>= 8;
         }
         if (length == nodeLength && Header.includeString(header)) {
             return -1;
@@ -85,9 +85,8 @@ public class Node extends BlockFlyweight {
         return nativeByte(HEADER_OFFSET);
     }
 
-    public Node header(final byte value) {
+    public void header(final byte value) {
         nativeByte(HEADER_OFFSET, value);
-        return this;
     }
 
     public Node header(final int length, final boolean complete, final int count) {
@@ -103,16 +102,15 @@ public class Node extends BlockFlyweight {
         return nativeByte(KEYS_OFFSET + position);
     }
 
-    public Node key(final int position, final byte value) {
+    public void key(final int position, final byte value) {
         nativeByte(KEYS_OFFSET + position, value);
-        return this;
     }
 
     public boolean includeKey(final int position) {
         return (nativeByte(INCLUDE_OFFSET + position / Byte.SIZE) & (1 << position % Byte.SIZE)) != 0;
     }
 
-    public Node includeKey(final int position, final boolean include) {
+    public void includeKey(final int position, final boolean include) {
         final int index = position / Byte.SIZE;
         byte flag = (byte) (1 << (position % Byte.SIZE));
         byte includes = nativeByte(INCLUDE_OFFSET + index);
@@ -122,7 +120,6 @@ public class Node extends BlockFlyweight {
             includes &= (byte) ~flag;
         }
         nativeByte(INCLUDE_OFFSET + index, includes);
-        return this;
     }
 
     public int index(final int position) {
@@ -134,11 +131,10 @@ public class Node extends BlockFlyweight {
         return this;
     }
 
-    public Node index(final int position, final byte key, final int block, boolean include) {
+    public void index(final int position, final byte key, final int block, boolean include) {
         key(position, key);
         index(position, block);
         includeKey(position, include);
-        return this;
     }
 
     public int keyPosition(final int count, final byte key) {
@@ -209,7 +205,6 @@ public class Node extends BlockFlyweight {
         if (count >= 1) {
             builder.append(" [");
             for (int i = 0; i < count; ++i) {
-                final int index = index(i);
                 builder.append((char) key(i));
                 if (includeKey(i)) {
                     builder.append('!');
@@ -295,6 +290,10 @@ public class Node extends BlockFlyweight {
 
         public static byte stringLength(final int header, final int length) {
             return (byte) ((header & ~(STRLEN_MASK << STRLEN_OFFSET)) | ((length & STRLEN_MASK) << STRLEN_OFFSET));
+        }
+
+        public static byte clearStringLength(final int header) {
+            return (byte) (header & ~(STRLEN_MASK << STRLEN_OFFSET));
         }
     }
 }

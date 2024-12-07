@@ -3,6 +3,8 @@ package org.limitless.radix4j;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import static org.limitless.radix4j.Node.Header;
@@ -14,10 +16,50 @@ public class RadixTreeTest {
         final var tree = new RadixTree();
         addContains(tree, "cat");
         addContains(tree, "cats");
-        addContains(tree, "crow");
         addContains(tree, "cow");
+        addContains(tree, "cabbage");
+        addContains(tree, "crow");
         addContains(tree, "pig");
         addContains(tree, "pin");
+        addContains(tree, "cabs");
+        assertTrue(tree.contains("cat"));
+    }
+
+    @Test
+    public void add1() {
+        final var tree = new RadixTree();
+        addContains(tree, "cabbage");
+        addContains(tree, "cabs");
+        assertFalse(tree.contains("cabb"));
+        new Checker().check(tree,
+            node -> {
+                assertEquals("cab", getString(node));
+                assertEquals(2, Header.indexCount(node.header()));
+                assertEquals('b', node.key(0));
+                assertFalse(node.includeKey(0));
+                assertEquals('s', node.key(1));
+                assertTrue(node.includeKey(1));
+            },
+            node -> {
+                assertEquals("a", getString(node));
+                assertFalse(Header.includeString(node.header()));
+                assertEquals(1, Header.indexCount(node.header()));
+                assertEquals('g', node.key(0));
+            },
+            node -> {
+                assertEquals("e", getString(node));
+                assertTrue(Header.includeString(node.header()));
+                assertEquals(0, Header.indexCount(node.header()));
+            }
+        );
+    }
+
+    @Test
+    public void add2() {
+        final var tree = new RadixTree();
+        addContains(tree, "cat");
+        addContains(tree, "cabs");
+        assertTrue(tree.contains("cat"));
     }
 
     @Test
@@ -730,7 +772,7 @@ public class RadixTreeTest {
     @Test
     public void benchmarkMaxLimits() {
         final int count = 200_000_000;
-        final var tree = new RadixTree(RadixTree.MAX_BLOCK_COUNT);
+        final var tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
         long bytes = 0;
         long elapsed = 0;
         for (int i = 0; i < count; ++i) {
@@ -741,11 +783,13 @@ public class RadixTreeTest {
             elapsed += System.currentTimeMillis() - timestamp;
             assertTrue(added, str);
             if (i % 1_000_000 == 0) {
-                System.out.println("allocated = " + tree.allocatedBlocks());
+                System.out.printf("allocated = %,d\n", tree.allocatedBlocks() * 64);
             }
         }
         System.out.printf("Add: %,d strings in %d ms\n", count, elapsed);
-        System.out.printf("Limits: blocks = %,d, strings = %,d\n", Node.BYTES * tree.allocatedBlocks(), bytes);
+        final int blocks = tree.allocatedBlocks();
+        System.out.printf("Limits: blocks = %,d, segments = %d, strings = %,d\n",
+            Node.BYTES * blocks, blocks / RadixTree.MAX_BLOCKS_PER_SEGMENT, bytes);
 
         elapsed = 0;
         for (int i = 0; i < count; ++i) {
@@ -766,6 +810,25 @@ public class RadixTreeTest {
         System.out.printf("Remove: %,d strings in %d ms\n", count, elapsed);
 
         assertEmpty(tree);
+    }
+
+    @Disabled
+    @Test
+    public void hashSetMemoryUsage() {
+        final HashSet<Integer> set = new HashSet<>(101);
+        final Runtime runtime = Runtime.getRuntime();
+        for (int i = 100_000_000; i <= 110_000_000; ++i) {
+            assertTrue(set.add(i));
+            if (i % 1_000_000 == 0) {
+                System.out.printf("set: free = %,d MB\n", runtime.freeMemory() / 1024 / 1024);
+            }
+        }
+
+        final RadixTree tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
+        for (int i = 100_000_000; i <= 110_000_000; ++i) {
+            assertTrue(tree.add("" + i));
+        }
+        System.out.printf("tree: lim = %,d MB\n", tree.allocatedBlocks() * 64 / 1024 / 1024);
     }
 
     private static void assertEmpty(final RadixTree tree) {

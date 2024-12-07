@@ -91,4 +91,26 @@ public class ByteUtils {
         value |= (long) values[7] << 56L;
         return value;
     }
+
+    //
+    // Benchmark Helpers
+    //
+    public static int hashCode(int result, final byte[] string, final int fromIndex, final int length) {
+        int end = fromIndex + length;
+        for (int i = fromIndex; i < end; i++) {
+            result = 31 * result + string[i];
+        }
+        return result;
+    }
+
+    public static void intToChars(int value, final int offset, final int length, final byte[] bytes) {
+        int pos = offset;
+        while (value >= 10) {
+            final int result = value / 10;
+            final int digit = value % 10;
+            bytes[--pos] = (byte) ('0' + digit);
+            value = result;
+        }
+        bytes[--pos] = (byte) ('0' + value);
+    }
 }
