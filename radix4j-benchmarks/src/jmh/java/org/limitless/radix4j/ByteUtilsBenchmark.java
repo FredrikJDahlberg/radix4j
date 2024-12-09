@@ -10,26 +10,13 @@ import java.util.concurrent.TimeUnit;
 @Measurement(iterations = 5, batchSize = 100_000_000)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @BenchmarkMode(Mode.SingleShotTime)
-
-/*
-@State(Scope.Thread)
-@Warmup(iterations = 2, time = 5)
-@Measurement(iterations = 2, time = 10)
-@OutputTimeUnit(TimeUnit.NANOSECONDS)
-@BenchmarkMode(Mode.AverageTime)
-*/
 public class ByteUtilsBenchmark {
 
     @State(Scope.Thread)
     public static class ByteUtilsState {
         final long keys = 0x4847464544434241L;
-        byte key;
+        byte key = 'A';
         final byte[] string = "ABCDEFGH".getBytes();
-    }
-
-    @Setup(Level.Iteration)
-    public void setup(final ByteUtilsState state) {
-        state.key = 'A';
     }
 
     @Benchmark

@@ -29,6 +29,7 @@ public class Node extends BlockFlyweight {
     protected static final int BYTES = PAD_OFFSET + PAD_LENGTH;
 
     private static final int KEY_MASK = 0xff;
+    private static final int HEADER_MASK = 0xff;
 
     public int offset() {
         return (int) Address.toOffset(segment(), super.block());
@@ -45,16 +46,16 @@ public class Node extends BlockFlyweight {
     }
 
     public int mismatch(final int offset, final int length, final byte[] string) {
-        long stringValue = nativeLong(HEADER_OFFSET);
-        final byte header = (byte) (stringValue & 0xff);
+        long nodeString = nativeLong(HEADER_OFFSET);
+        final byte header = (byte) (nodeString & HEADER_MASK);
         final int nodeLength = Header.stringLength(header);
         final int remaining = Math.min(length, nodeLength);
-        stringValue >>>= 8;
+        nodeString >>>= 8;
         for (int i = 0; i < remaining; ++i) {
-            if ((stringValue & KEY_MASK) != string[i + offset]) {
+            if ((nodeString & KEY_MASK) != string[i + offset]) {
                 return i;
             }
-            stringValue >>>= 8;
+            nodeString >>>= 8;
         }
         if (length == nodeLength && Header.includeString(header)) {
             return -1;
