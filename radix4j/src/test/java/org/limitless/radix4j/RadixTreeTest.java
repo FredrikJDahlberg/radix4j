@@ -829,16 +829,19 @@ public class RadixTreeTest {
         for (final String string : strings) {
             addContains(tree, string);
         }
+
         final String missing = "1234DD";
         assertTrue(tree.add(missing), missing);
 
-        tree.forEach(System.out::println);
         for (final String string : strings) {
             assertTrue(tree.contains(string), string);
         }
         assertTrue(tree.contains(missing), missing);
-        System.out.println(64 * tree.allocatedBlocks() + " / " + strings.length * strings[0].length());
 
+        for (final String string : strings) {
+            assertTrue(tree.remove(string), string);
+        }
+        assertTrue(tree.remove(missing), missing);
     }
 
     @Disabled
