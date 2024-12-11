@@ -766,6 +766,49 @@ public class RadixTreeTest {
         assertTrue(tree.contains("1234567890-1"));
     }
 
+    @Test
+    public void missingNodeKey() {
+        String[] strings = {
+            "1234D2",
+            "1234D3",
+            "1234D4",
+            "1234D5",
+            "1234D6",
+            "1234D7",
+            "1234D8",
+            "1234D9",
+            "1234DA",
+            "1234DB",
+            "1234DC",
+        };
+        final var tree = new RadixTree();
+        for (final String string : strings) {
+            addContains(tree, string);
+        }
+
+        final String missing = "1234DD";
+        assertTrue(tree.add(missing), missing);
+
+        for (final String string : strings) {
+            assertTrue(tree.contains(string), string);
+        }
+        assertTrue(tree.contains(missing), missing);
+
+        for (final String string : strings) {
+            assertTrue(tree.remove(string), string);
+        }
+        assertTrue(tree.remove(missing), missing);
+    }
+
+    @Test
+    public void treeToString() {
+        final var tree = new RadixTree();
+        assertTrue(tree.add("1234_1"));
+        assertTrue(tree.add("1234_2"));
+        assertEquals(0, ("RadixTree{ size = 2, BlockPool{ size = 64, blocks = 256," +
+            " segments = 1, bytes = 16 384 } }").compareTo(tree.toString()));
+    }
+
     @Disabled
     @Test
     public void benchmarkMaxLimits() {
@@ -808,40 +851,6 @@ public class RadixTreeTest {
         System.out.printf("Remove: %,d strings in %d ms\n", count, elapsed);
 
         assertEmpty(tree);
-    }
-
-    @Test
-    public void missingNodeKey() {
-        String[] strings = {
-            "1234D2",
-            "1234D3",
-            "1234D4",
-            "1234D5",
-            "1234D6",
-            "1234D7",
-            "1234D8",
-            "1234D9",
-            "1234DA",
-            "1234DB",
-            "1234DC",
-        };
-        final var tree = new RadixTree();
-        for (final String string : strings) {
-            addContains(tree, string);
-        }
-
-        final String missing = "1234DD";
-        assertTrue(tree.add(missing), missing);
-
-        for (final String string : strings) {
-            assertTrue(tree.contains(string), string);
-        }
-        assertTrue(tree.contains(missing), missing);
-
-        for (final String string : strings) {
-            assertTrue(tree.remove(string), string);
-        }
-        assertTrue(tree.remove(missing), missing);
     }
 
     @Disabled

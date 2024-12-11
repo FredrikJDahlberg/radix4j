@@ -286,7 +286,7 @@ public class RadixTree {
 
     @Override
     public String toString() {
-        return "RadixTree{ size = " + size + ", bytes = " + pool.allocatedBytes() + " }";
+        return "RadixTree{ size = " + size + ", " + pool + " }";
     }
 
     private void addString(final int offset, final int length, final byte[] string, final Search search) {
