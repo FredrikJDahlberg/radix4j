@@ -52,14 +52,14 @@ public class HashSetBenchmark extends BaseBenchmark {
     @Benchmark
     public boolean hashSetAdd(final HashSetState state) {
         final int hashCode = ByteUtils.hashCode(1, strings, state.stringOffset, STRING_LENGTH);
-        return state.counters(state.set.add(hashCode));
+        return state.updateStats(state.set.add(hashCode));
     }
 
     @Benchmark
     public boolean hashSetContains(final FullHashSetState state) {
         final int hashCode = ByteUtils.hashCode(1, strings, state.stringOffset, STRING_LENGTH);
         final boolean result = state.set.contains(hashCode);
-        state.counters(result);
+        state.updateStats(result);
         return result;
     }
 
@@ -67,7 +67,7 @@ public class HashSetBenchmark extends BaseBenchmark {
     public boolean hashSetRemove(final FullHashSetState state) {
         final int hashCode = ByteUtils.hashCode(1, strings, state.stringOffset, STRING_LENGTH);
         final boolean result = state.set.remove(hashCode);
-        state.counters(result);
+        state.updateStats(result);
         return result;
     }
 }

@@ -405,16 +405,17 @@ public class RadixTree {
                 consumed = 1;
             }
         } else {
-            final int index = found.index(INDEX_COUNT - 1);
+            final int foundIndex = found.index(INDEX_COUNT - 1);
+            final byte foundKey = found.key(INDEX_COUNT - 1);
+            final boolean foundInclude = found.includeKey(INDEX_COUNT - 1);
             final int childOffset = allocate(child).offset();
-            found
-                .index(INDEX_COUNT - 1, EMPTY_KEY, childOffset, false);
             child
                 .header(0, false, 0)
-                .index(0, index)
+                .addIndex(foundKey, foundIndex, foundInclude)
                 .addIndex(key, offset, true);
-            consumed = 1;
+            found.index(INDEX_COUNT - 1, EMPTY_KEY, childOffset, false);
             found.wrap(child);
+            consumed = 1;
         }
         if (offset != EMPTY_BLOCK) {
             search.found.wrap(parent);

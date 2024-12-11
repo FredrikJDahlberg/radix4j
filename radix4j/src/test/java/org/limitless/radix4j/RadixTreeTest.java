@@ -810,6 +810,37 @@ public class RadixTreeTest {
         assertEmpty(tree);
     }
 
+    @Test
+    public void missingNodeKey() {
+        String[] strings = {
+            "1234D2",
+            "1234D3",
+            "1234D4",
+            "1234D5",
+            "1234D6",
+            "1234D7",
+            "1234D8",
+            "1234D9",
+            "1234DA",
+            "1234DB",
+            "1234DC",
+        };
+        final var tree = new RadixTree();
+        for (final String string : strings) {
+            addContains(tree, string);
+        }
+        final String missing = "1234DD";
+        assertTrue(tree.add(missing), missing);
+
+        tree.forEach(System.out::println);
+        for (final String string : strings) {
+            assertTrue(tree.contains(string), string);
+        }
+        assertTrue(tree.contains(missing), missing);
+        System.out.println(64 * tree.allocatedBlocks() + " / " + strings.length * strings[0].length());
+
+    }
+
     @Disabled
     @Test
     public void hashSetMemoryUsage() {

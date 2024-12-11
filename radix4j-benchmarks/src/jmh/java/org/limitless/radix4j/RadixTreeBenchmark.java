@@ -30,7 +30,7 @@ public class RadixTreeBenchmark extends BaseBenchmark {
 
     @Benchmark
     public boolean radixTreeAdd(final EmptyTree state) {
-        return state.counters(state.tree.add(state.stringOffset, STRING_LENGTH, strings));
+        return state.updateStats(state.tree.add(state.stringOffset, STRING_LENGTH, strings));
     }
 
     @State(Scope.Benchmark)
@@ -53,11 +53,11 @@ public class RadixTreeBenchmark extends BaseBenchmark {
 
     @Benchmark
     public boolean radixTreeContains(final FullTree state) {
-        return state.counters(state.tree.contains(state.stringOffset, STRING_LENGTH, strings));
+        return state.updateStats(state.tree.contains(state.stringOffset, STRING_LENGTH, strings));
     }
 
     @Benchmark
     public boolean radixTreeRemove(final FullTree state) {
-        return state.counters(state.tree.remove(state.stringOffset, STRING_LENGTH, strings));
+        return state.updateStats(state.tree.remove(state.stringOffset, STRING_LENGTH, strings));
     }
 }

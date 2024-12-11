@@ -35,7 +35,7 @@ public class BaseBenchmark {
             }
         }
 
-        boolean counters(final boolean result) {
+        boolean updateStats(final boolean result) {
             stringOffset = (stringOffset + STRING_LENGTH) % MAX;
             if (result) {
                 ++success;
