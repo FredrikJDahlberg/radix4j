@@ -199,7 +199,7 @@ public class Node extends BlockFlyweight {
         }
         builder.append('\"');
         if (Header.includeString(header)) {
-            builder.append('!');
+            builder.append('.');
         }
 
         final int count = Header.indexCount(header);
@@ -208,7 +208,7 @@ public class Node extends BlockFlyweight {
             for (int i = 0; i < count; ++i) {
                 builder.append((char) key(i));
                 if (includeKey(i)) {
-                    builder.append('!');
+                    builder.append('.');
                 } else {
                     builder.append('=').append(index(i));
                 }
