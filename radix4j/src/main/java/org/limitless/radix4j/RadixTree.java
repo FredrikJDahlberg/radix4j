@@ -16,8 +16,6 @@ public class RadixTree {
 
     private static final int INITIAL_PATH_SIZE = 32;
 
-    private final int blocksPerSegment;
-
     private BlockPool<Node> pool;
     private Node root;
     private Node child;
@@ -27,10 +25,19 @@ public class RadixTree {
     private int size;
     private int allocatedBlocks;
 
+    private final int blocksPerSegment;
+
+    /**
+     * Constructs an empty tree with the default segment size
+     */
     public RadixTree() {
         this(DEFAULT_BLOCK_COUNT);
     }
 
+    /**
+     * Constructs an emtpy tree with the given segment size
+     * @param blocksPerSegment segment size
+     */
     public RadixTree(final int blocksPerSegment) {
         if (blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCKS_PER_SEGMENT) {
             throw new InvalidParameterException("invalid number of blocks per segment");
@@ -39,6 +46,11 @@ public class RadixTree {
         initiate(blocksPerSegment);
     }
 
+    /**
+     * Allocates an empty tree with the given segment size
+     * @param blocksPerSegment segment size
+     * @return tree
+     */
     public static RadixTree allocate(final int blocksPerSegment) {
         return new RadixTree(blocksPerSegment);
     }
@@ -161,19 +173,19 @@ public class RadixTree {
         final Node node = search.node;
         byte header = node.header();
         if (search.key == EMPTY_KEY) {
-            node.header(Header.includeString(header, false));
+            node.header(Header.containsString(header, false));
         } else {
             final int position = search.keyPos;
             final int index = node.index(position);
-            if (node.includeKey(position)) {
-                node.includeKey(position, false);
+            if (node.containsKey(position)) {
+                node.containsKey(position, false);
             }
             if (index == EMPTY_BLOCK) {
                 node.removeIndex(position);
             }
         }
         header = node.header();
-        if (Header.indexCount(header) == 0 && !Header.includeString(header)) {
+        if (Header.indexCount(header) == 0 && !Header.containsString(header)) {
             free(node);
 
             for (int i = search.pathCount - 2; i >= 0; --i) {
@@ -181,10 +193,10 @@ public class RadixTree {
 
                 header = node.header();
                 final int count = Header.indexCount(header);
-                final boolean include = Header.includeString(header);
+                final boolean contains = Header.containsString(header);
                 final int position = search.pathKeyPositions[i + 1];
                 node.removeIndex(position);
-                if (count >= 2 || include) {
+                if (count >= 2 || contains) {
                     break;
                 } else {
                     free(node);
@@ -226,10 +238,11 @@ public class RadixTree {
         pool.close();
     }
 
-    /**
-     * The number of allocated blocks in the collection.
-     * @return block count
-     */
+    @Override
+    public String toString() {
+        return "RadixTree{ size = " + size + ", " + pool + "}";
+    }
+
     protected int allocatedBlocks() {
         return allocatedBlocks;
     }
@@ -239,24 +252,15 @@ public class RadixTree {
      * @param consumer node consumer
      */
     protected void forEach(final Consumer<Node> consumer) {
+        if (consumer == null) {
+            throw new IllegalArgumentException("null consumer");
+        }
         if (root == null) {
             return;
         }
-
         search.pathCount = 0;
-
         parent.wrap(root);
         forEach(parent, consumer);
-    }
-
-    private void initiate(final int blocksPerSegment) {
-        size = 0;
-        allocatedBlocks = 0;
-        pool = new BlockPool.Builder<>(Arena.ofShared(), Node.class).blocksPerSegment(blocksPerSegment).build();
-        parent = allocate(new Node());
-        root = allocate(new Node());
-        child = allocate(new Node());
-        search = new Search(allocate(new Node()), allocate(new Node()));
     }
 
     private void forEach(final Node node, final Consumer<Node> consumer) {
@@ -284,11 +288,6 @@ public class RadixTree {
         }
     }
 
-    @Override
-    public String toString() {
-        return "RadixTree{ size = " + size + ", " + pool + "}";
-    }
-
     private void addString(final int offset, final int length, final byte[] string, final Search search) {
         final byte header = search.node.header();
         final int stringLength = Header.stringLength(header);
@@ -304,7 +303,7 @@ public class RadixTree {
                 consumed = 1;
                 break;
             case Search.SUBSTRING:
-                search.node.header(Header.includeString(header, true));
+                search.node.header(Header.containsString(header, true));
                 break;
             case Search.MISSING_KEY:
                 consumed = addKey(length, key, search.keyPos, search.node);
@@ -336,11 +335,11 @@ public class RadixTree {
         final int foundOffset = remainingNode == 1 && count == 0 ? EMPTY_BLOCK : node.offset();
         final int childOffset = remainingString >= 2 ? allocate(child).offset() : EMPTY_BLOCK;
         if (remainingNode >= 1) {
-            final byte foundKey = node.string(0);
-            final boolean includeKey = Header.includeString(header) && Header.stringLength(header) == 1;
+            final byte foundKey = node.charAt(0);
+            final boolean containsKey = Header.containsString(header) && Header.stringLength(header) == 1;
             parent
                 .header(0, false, 0)
-                .addIndex(foundKey, foundOffset,  includeKey)
+                .addIndex(foundKey, foundOffset,  containsKey)
                 .addIndex(key, childOffset, remainingString == 1);
 
         }
@@ -348,9 +347,9 @@ public class RadixTree {
             free(node);
             node.wrap(parent);
         } else {
-            node.moveString(1, remainingNode - 1);
+            node.removePrefix(1, remainingNode - 1);
             if (remainingNode == 1) {
-                node.header(Header.includeString(node.header(), false));
+                node.header(Header.containsString(node.header(), false));
             }
         }
         if (childOffset != 0) {
@@ -372,11 +371,11 @@ public class RadixTree {
             parent.copy(node);
         }
         if (remainingNode >= 2) {
-            parent.moveString(mismatch + 1, remainingNode - 1);
+            parent.removePrefix(mismatch + 1, remainingNode - 1);
         } else {
             if (count == 1) {
                 parent.header(1, true, 0);
-                parent.string(0, node.key(0));
+                parent.charAt(0, node.key(0));
             } else {
                 final byte parentHeader = parent.header();
                 parent.header(Header.clearStringLength(parentHeader));
@@ -384,7 +383,7 @@ public class RadixTree {
         }
         node
             .header(mismatch, remainingString == 0, 1)
-            .index(0, node.string(mismatch), offset, remainingNode == 1);
+            .index(0, node.charAt(mismatch), offset, remainingNode == 1);
         return addKey(remainingString, key, keyPos, node);
     }
 
@@ -402,7 +401,7 @@ public class RadixTree {
         final int consumed;
         if (count < INDEX_COUNT) {
             if (remaining == 0) {
-                node.includeKey(keyPos, true);
+                node.containsKey(keyPos, true);
                 consumed = 0;
             } else {
                 node.addIndex(key, offset, remaining == 1);
@@ -410,13 +409,10 @@ public class RadixTree {
             }
         } else {
             final int last = INDEX_COUNT - 1;
-            final int lastIndex = node.index(last);
-            final byte lastKey = node.key(last);
-            final boolean lastInclude = node.includeKey(last);
             final int childOffset = allocate(child).offset();
             child
                 .header(0, false, 0)
-                .addIndex(lastKey, lastIndex, lastInclude)
+                .addIndex(node.key(last), node.index(last), node.containsKey(last))
                 .addIndex(key, offset, true);
             node.index(last, EMPTY_KEY, childOffset, false);
             node.wrap(child);
@@ -470,6 +466,16 @@ public class RadixTree {
             --allocatedBlocks;
             pool.free(node);
         }
+    }
+
+    private void initiate(final int blocksPerSegment) {
+        size = 0;
+        allocatedBlocks = 0;
+        pool = new BlockPool.Builder<>(Arena.ofShared(), Node.class).blocksPerSegment(blocksPerSegment).build();
+        parent = allocate(new Node());
+        root = allocate(new Node());
+        child = allocate(new Node());
+        search = new Search(allocate(new Node()), allocate(new Node()));
     }
 
     private static final class Search {
@@ -557,7 +563,7 @@ public class RadixTree {
                         --length;
                         ++position;
                         if (length == 0) {
-                            return !node.includeKey(foundPos);
+                            return !node.containsKey(foundPos);
                         }
                         processString = true;
                     }

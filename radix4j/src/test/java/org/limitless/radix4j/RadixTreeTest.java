@@ -29,19 +29,19 @@ public class RadixTreeTest {
                 assertEquals("cab", getString(node));
                 assertEquals(2, Header.indexCount(node.header()));
                 assertEquals('b', node.key(0));
-                assertFalse(node.includeKey(0));
+                assertFalse(node.containsKey(0));
                 assertEquals('s', node.key(1));
-                assertTrue(node.includeKey(1));
+                assertTrue(node.containsKey(1));
             },
             node -> {
                 assertEquals("a", getString(node));
-                assertFalse(Header.includeString(node.header()));
+                assertFalse(Header.containsString(node.header()));
                 assertEquals(1, Header.indexCount(node.header()));
                 assertEquals('g', node.key(0));
             },
             node -> {
                 assertEquals("e", getString(node));
-                assertTrue(Header.includeString(node.header()));
+                assertTrue(Header.containsString(node.header()));
                 assertEquals(0, Header.indexCount(node.header()));
             }
         );
@@ -134,20 +134,20 @@ public class RadixTreeTest {
                 assertEquals(2, Header.indexCount(header));
 
                 assertEquals('a', (char) node.key(0));
-                assertFalse(node.includeKey(0));
+                assertFalse(node.containsKey(0));
 
                 assertEquals('x', (char) node.key(1));
-                assertTrue(node.includeKey(1));
+                assertTrue(node.containsKey(1));
             },
             node -> {
                 final byte header = node.header();
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals(0, Header.indexCount(header));
                 assertEquals("y", getString(node));
             },
             node -> {
                 final byte header = node.header();
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals(0, Header.indexCount(header));
                 assertEquals("b", getString(node));
             }
@@ -176,7 +176,7 @@ public class RadixTreeTest {
             },
             node -> {
                 final byte header = node.header();
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals(0, Header.indexCount(header));
                 assertEquals("f", getString(node));
             }
@@ -204,21 +204,21 @@ public class RadixTreeTest {
             node -> {
                 final byte header = node.header();
                 assertEquals("m0", getString(node));
-                assertFalse(Header.includeString(header));
+                assertFalse(Header.containsString(header));
                 assertEquals(2, Header.indexCount(header));
                 assertEquals('2', (char) node.key(0));
                 assertEquals('3', (char) node.key(1));
             },
             node -> {
                 final byte header = node.header();
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals(0, Header.indexCount(header));
                 assertEquals("0", getString(node));
             },
             node -> {
                 final byte header = node.header();
                 assertEquals(0, Header.indexCount(header));
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals("8", getString(node));
             }
         );
@@ -248,17 +248,17 @@ public class RadixTreeTest {
                 assertEquals("ABCDE", getString(node));
 
                 assertEquals((byte) 'F', node.key(0));
-                assertFalse(node.includeKey(0));
+                assertFalse(node.containsKey(0));
             },
             node -> {
                 final byte header = node.header();
                 assertEquals(2, Header.indexCount(header));
                 assertEquals("G_", getString(node));
 
-                assertTrue(node.includeKey(0));
+                assertTrue(node.containsKey(0));
                 assertEquals('H', node.key(0));
 
-                assertTrue(node.includeKey(1));
+                assertTrue(node.containsKey(1));
                 assertEquals('I', node.key(1));
             }
         );
@@ -272,20 +272,20 @@ public class RadixTreeTest {
         new Checker().check(tree,
             node -> {
                 final byte header = node.header();
-                assertFalse(Header.includeString(header));
+                assertFalse(Header.containsString(header));
                 assertEquals("m0", getString(node));
                 assertEquals(2, Header.indexCount(header));
-                assertFalse(node.includeKey(0));
+                assertFalse(node.containsKey(0));
                 assertEquals('2', (char) node.key(0));
-                assertFalse(node.includeKey(1));
+                assertFalse(node.containsKey(1));
                 assertEquals('3', (char) node.key(1));
             },
             node -> {
-                assertTrue(Header.includeString(node.header()));
+                assertTrue(Header.containsString(node.header()));
                 assertEquals("0", getString(node));
             },
             node -> {
-                assertTrue(Header.includeString(node.header()));
+                assertTrue(Header.containsString(node.header()));
                 assertEquals("8", getString(node));
             }
         );
@@ -346,14 +346,14 @@ public class RadixTreeTest {
             node -> {
                 final byte header = node.header();
                 assertEquals("ca", getString(node), "string");
-                assertFalse(Header.includeString(header));
+                assertFalse(Header.containsString(header));
                 assertEquals(2, Header.indexCount(header), "key count");
 
                 assertEquals('t', (char) node.key(0), "key 0");
-                assertTrue(node.includeKey(0), "key complete 0");
+                assertTrue(node.containsKey(0), "key complete 0");
 
                 assertEquals('r', (char) node.key(1), "key 1");
-                assertTrue(node.includeKey(1), "key complete 1");
+                assertTrue(node.containsKey(1), "key complete 1");
             }
         );
     }
@@ -369,10 +369,10 @@ public class RadixTreeTest {
                 assertEquals(2, Header.indexCount(node.header()));
 
                 assertEquals((byte) 's', node.key(0));
-                assertTrue(node.includeKey(0));
+                assertTrue(node.containsKey(0));
 
                 assertEquals((byte) 't', node.key(1));
-                assertTrue(node.includeKey(1));
+                assertTrue(node.containsKey(1));
             }
         );
     }
@@ -389,20 +389,20 @@ public class RadixTreeTest {
         new Checker().check(tree,
             node -> {
                 final byte header = node.header();
-                assertFalse(Header.includeString(header));
+                assertFalse(Header.containsString(header));
                 assertEquals(1, Header.indexCount(header));
                 assertEquals("abcde", getString(node));
                 assertEquals('f', node.key(0));
-                assertFalse(node.includeKey(0));
+                assertFalse(node.containsKey(0));
             },
             node -> {
                 final byte header = node.header();
                 assertEquals("ghij-", getString(node));
                 assertEquals(6, Header.indexCount(header));
-                assertFalse(Header.includeString(header));
+                assertFalse(Header.containsString(header));
                 for (int i = 0; i <= 5; ++i) {
                     assertEquals('0' + i, node.key(i));
-                    assertTrue(node.includeKey(i));
+                    assertTrue(node.containsKey(i));
                 }
             }
         );
@@ -440,7 +440,7 @@ public class RadixTreeTest {
             },
             node -> {
                 final byte header = node.header();
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals("0", getString(node));
                 assertEquals(0, Header.indexCount(header));
             },
@@ -450,13 +450,13 @@ public class RadixTreeTest {
                 assertEquals(3, Header.indexCount(header));
 
                 assertEquals('7', (char) node.key(0));
-                assertTrue(node.includeKey(0));
+                assertTrue(node.containsKey(0));
 
                 assertEquals('8', (char) node.key(1));
-                assertTrue(node.includeKey(1));
+                assertTrue(node.containsKey(1));
 
                 assertEquals('9', (char) node.key(2));
-                assertTrue(node.includeKey(2));
+                assertTrue(node.containsKey(2));
             }
         );
     }
@@ -511,7 +511,7 @@ public class RadixTreeTest {
         new Checker().check(tree,
             node -> {
                 final byte header = node.header();
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals(0, Header.indexCount(header));
                 assertEquals("cat", getString(node));
             }
@@ -535,12 +535,12 @@ public class RadixTreeTest {
         new Checker().check(tree,
             node -> {
                 final byte header = node.header();
-                assertFalse(Header.includeString(header));
+                assertFalse(Header.containsString(header));
                 assertEquals(1, Header.indexCount(header));
                 assertEquals("cat", getString(node));
 
                 assertEquals('s', (char) node.key(0));
-                assertTrue(node.includeKey(0));
+                assertTrue(node.containsKey(0));
             }
         );
     }
@@ -564,23 +564,23 @@ public class RadixTreeTest {
                 assertEquals(2, Header.indexCount(header));
 
                 assertEquals('c', node.key(0));
-                assertFalse(node.includeKey(0));
+                assertFalse(node.containsKey(0));
 
                 assertEquals('p', node.key(1));
-                assertFalse(node.includeKey(1));
+                assertFalse(node.containsKey(1));
             },
             node -> {
                 assertEquals("ig", getString(node));
-                assertTrue(Header.includeString(node.header()));
+                assertTrue(Header.containsString(node.header()));
             },
             node -> {
                 final byte header = node.header();
-                assertFalse(Header.includeString(header));
+                assertFalse(Header.containsString(header));
                 assertEquals(1, Header.indexCount(header));
                 assertEquals("at", getString(node));
 
                 assertEquals('s', (char) node.key(0));
-                assertTrue(node.includeKey(0));
+                assertTrue(node.containsKey(0));
             }
         );
         assertTrue(tree.remove("cats"));
@@ -683,14 +683,14 @@ public class RadixTreeTest {
                 assertEquals(2, Header.indexCount(header));
 
                 assertEquals('a', (char) node.key(0));
-                assertTrue(node.includeKey(0));
+                assertTrue(node.containsKey(0));
 
                 assertEquals('p', (char) node.key(1));
-                assertFalse(node.includeKey(1));
+                assertFalse(node.containsKey(1));
             },
             node -> {
                 final byte header = node.header();
-                assertTrue(Header.includeString(header));
+                assertTrue(Header.containsString(header));
                 assertEquals(0, Header.indexCount(header));
                 assertEquals("ig", getString(node));
             }
@@ -727,44 +727,55 @@ public class RadixTreeTest {
 
     @Disabled
     @Test
-    public void benchmarkMaxLimits() {
-        final int count = 500_000_000;
+    public void benchmark100M() {
+        final int count = 100_000_000;
         final var tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
-        long bytes = 0;
+        final String PREFIX = "abcdefghijklmnop-";
         long elapsed = 0;
-        for (int i = 0; i < count; ++i) {
-            final String str = "abcdefghijklmnop-" + i;
-            bytes += str.length();
-            long timestamp = System.currentTimeMillis();
-            boolean added = tree.add(str);
+        for (int i = 1; i <= count; ++i) {
+            final long timestamp = System.currentTimeMillis();
+            final boolean success = tree.add(PREFIX + i);
             elapsed += System.currentTimeMillis() - timestamp;
-            assertTrue(added, str);
-            if (i % 10_000_000 == 0) {
-                System.out.printf("%,d: allocated = %,d\n", i, (long) tree.allocatedBlocks() * 64);
+            assertTrue(success);
+        }
+        System.out.println(tree);
+        System.out.printf("Add     : %,d strings in %,6d ms\n", count, elapsed);
+
+        elapsed = 0;
+        long timestamp = System.currentTimeMillis();
+        final int[] counts = { 0 };
+        tree.forEach(node -> {
+            final byte header = node.header();
+            if (Header.containsString(header)) {
+                ++counts[0];
             }
-        }
-        System.out.printf("Add: %,d strings in %d ms\n", count, elapsed);
-        final int blocks = tree.allocatedBlocks();
-        System.out.printf("Limits: blocks = %,d, segments = %d, strings = %,d\n",
-            (long) Node.BYTES * blocks, blocks / RadixTree.MAX_BLOCKS_PER_SEGMENT, bytes);
+            final int keys = Header.indexCount(header);
+            for (int i = 0; i < keys; ++i) {
+                if (node.containsKey(i)) {
+                    ++counts[0];
+                }
+            }
+        });
+        elapsed += System.currentTimeMillis() - timestamp;
+        System.out.printf("ForEach : %,d strings in %,6d ms\n", counts[0], elapsed);
 
         elapsed = 0;
-        for (int i = 0; i < count; ++i) {
-            final String str = "abcdefghijklmnop-" + i;
-            long timestamp = System.currentTimeMillis();
-            assertTrue(tree.contains(str), str);
+        for (int i = 1; i <= count; ++i) {
+            timestamp = System.currentTimeMillis();
+            final boolean success = tree.contains(PREFIX + i);
             elapsed += System.currentTimeMillis() - timestamp;
+            assertTrue(success);
         }
-        System.out.printf("Contains: %,d strings in %d ms\n", count, elapsed);
+        System.out.printf("Contains: %,d strings in %,6d ms\n", count, elapsed);
 
         elapsed = 0;
-        for (int i = 0; i < count; ++i) {
-            final String str = "abcdefghijklmnop-" + i;
-            long timestamp = System.currentTimeMillis();
-            assertTrue(tree.remove(str), str);
+        for (int i = 1; i <= count; ++i) {
+            timestamp = System.currentTimeMillis();
+            final boolean success = tree.remove(PREFIX + i);
             elapsed += System.currentTimeMillis() - timestamp;
+            assertTrue(success);
         }
-        System.out.printf("Remove: %,d strings in %d ms\n", count, elapsed);
+        System.out.printf("Remove  : %,d strings in %,6d ms\n", count, elapsed);
 
         assertEmpty(tree);
     }

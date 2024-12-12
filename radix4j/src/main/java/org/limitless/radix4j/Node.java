@@ -18,9 +18,9 @@ public class Node extends BlockFlyweight {
     protected static final int HEADER_LENGTH = 1;
     protected static final int STRING_OFFSET = HEADER_OFFSET + HEADER_LENGTH;
     protected static final int STRING_LENGTH = 5;
-    protected static final int INCLUDE_OFFSET = STRING_OFFSET + STRING_LENGTH;
-    protected static final int INCLUDE_LENGTH = 2;
-    protected static final int INDEX_OFFSET = INCLUDE_OFFSET + INCLUDE_LENGTH;
+    protected static final int CONTAINS_OFFSET = STRING_OFFSET + STRING_LENGTH;
+    protected static final int CONTAINS_LENGTH = 2;
+    protected static final int INDEX_OFFSET = CONTAINS_OFFSET + CONTAINS_LENGTH;
     protected static final int INDEX_LENGTH = INDEX_COUNT * Integer.BYTES;
     protected static final int KEYS_OFFSET = INDEX_OFFSET + INDEX_LENGTH;
     protected static final int KEYS_LENGTH = INDEX_COUNT * KEY_LENGTH;
@@ -45,6 +45,13 @@ public class Node extends BlockFlyweight {
         return BYTES;
     }
 
+    /**
+     * Compare the current node with the string at offset.
+     * @param offset comparison position
+     * @param length remaining string length
+     * @param string byte array
+     * @return the first mistmatch position or -1 when equal
+     */
     public int mismatch(final int offset, final int length, final byte[] string) {
         long nodeString = nativeLong(HEADER_OFFSET);
         final byte header = (byte) (nodeString & HEADER_MASK);
@@ -57,87 +64,157 @@ public class Node extends BlockFlyweight {
             }
             nodeString >>>= 8;
         }
-        if (length == nodeLength && Header.includeString(header)) {
+        if (length == nodeLength && Header.containsString(header)) {
             return -1;
         }
         return remaining;
     }
 
-    public Node addIndex(final byte key, final int offset, boolean complete) {
+    /**
+     * Add an index to this node
+     * @param key key
+     * @param offset child offset
+     * @param contains true when the key is included
+     * @return this
+     */
+    public Node addIndex(final byte key, final int offset, boolean contains) {
         final byte header = header();
         final int count = Header.indexCount(header);
         header(Header.indexCount(header, count + 1));
-        index(count, key, offset, complete);
+        index(count, key, offset, contains);
         return this;
     }
 
+    /**
+     * Remove the index at the given position.
+     * @param position index position
+     */
     public void removeIndex(int position) {
         final byte header = header();
         final int newCount = Header.indexCount(header) - 1;
         if (position != newCount) {
             key(position, key(newCount));
-            includeKey(position, includeKey(newCount));
+            containsKey(position, containsKey(newCount));
             index(position, index(newCount));
         }
         header(Header.indexCount(header, newCount));
     }
 
+    /**
+     * Return the node header
+     * @return header
+     */
     public byte header() {
         return nativeByte(HEADER_OFFSET);
     }
 
+    /**
+     * Set the node header
+     * @param value new header value
+     */
     public void header(final byte value) {
         nativeByte(HEADER_OFFSET, value);
     }
 
-    public Node header(final int length, final boolean complete, final int count) {
+    /**
+     * Initiate a header
+     * @param length string length
+     * @param contains complete string
+     * @param count index count
+     * @return header
+     */
+    public Node header(final int length, final boolean contains, final int count) {
         byte header;
         header = Header.stringLength(0, length);
         header = Header.indexCount(header, count);
-        header = Header.includeString(header, complete);
+        header = Header.containsString(header, contains);
         header(header);
         return this;
     }
 
+    /**
+     * Key value at the given position
+     * @param position key position
+     * @return key
+     */
     public byte key(final int position) {
         return nativeByte(KEYS_OFFSET + position);
     }
 
-    public void key(final int position, final byte value) {
-        nativeByte(KEYS_OFFSET + position, value);
+    /**
+     * Set the key at the given position
+     * @param position key position
+     * @param key key value
+     */
+    public void key(final int position, final byte key) {
+        nativeByte(KEYS_OFFSET + position, key);
     }
 
-    public boolean includeKey(final int position) {
-        return (nativeByte(INCLUDE_OFFSET + position / Byte.SIZE) & (1 << position % Byte.SIZE)) != 0;
+    /**
+     * Check if the key tree contains the key at the given position
+     * @param position key position
+     * @return true when included
+     */
+    public boolean containsKey(final int position) {
+        return (nativeByte(CONTAINS_OFFSET + position / Byte.SIZE) & (1 << position % Byte.SIZE)) != 0;
     }
 
-    public void includeKey(final int position, final boolean include) {
+    /**
+     * Set the contains flag at the given position
+     * @param position flag position
+     * @param included flag
+     */
+    public void containsKey(final int position, final boolean included) {
         final int index = position / Byte.SIZE;
         byte flag = (byte) (1 << (position % Byte.SIZE));
-        byte includes = nativeByte(INCLUDE_OFFSET + index);
-        if (include) {
-            includes |= flag;
+        byte contains = nativeByte(CONTAINS_OFFSET + index);
+        if (included) {
+            contains |= flag;
         } else {
-            includes &= (byte) ~flag;
+            contains &= (byte) ~flag;
         }
-        nativeByte(INCLUDE_OFFSET + index, includes);
+        nativeByte(CONTAINS_OFFSET + index, contains);
     }
 
+    /**
+     * Get the index at the given position
+     * @param position index position
+     * @return index
+     */
     public int index(final int position) {
         return nativeInt(INDEX_OFFSET + position * Integer.BYTES);
     }
 
+    /**
+     * Set the index at the given position
+     * @param position index posiiton
+     * @param index new alue
+     * @return this
+     */
     public Node index(final int position, final int index) {
         nativeInt(INDEX_OFFSET + position * Integer.BYTES, index);
         return this;
     }
 
-    public void index(final int position, final byte key, final int block, boolean include) {
+    /**
+     * Set the key, offset and included flag at the given position
+     * @param position position
+     * @param key key
+     * @param offset  child offset
+     * @param included flag
+     */
+    public void index(final int position, final byte key, final int offset, boolean included) {
         key(position, key);
-        index(position, block);
-        includeKey(position, include);
+        index(position, offset);
+        containsKey(position, included);
     }
 
+    /**
+     * Find the position of the given key
+     * @param count key count
+     * @param key value
+     * @return position or -1 when not found
+     */
     public int keyPosition(final int count, final byte key) {
         int found = NOT_FOUND;
         for (int i = 0; i < count; ++i) {
@@ -152,37 +229,67 @@ public class Node extends BlockFlyweight {
         return found;
     }
 
-    public void string(final byte[] string, final int position, final int stringLength) {
-        final int length = Math.min(STRING_LENGTH, stringLength);
-        if (length >= 1) {
-            nativeByteArray(position, string, STRING_OFFSET, length);
+    /**
+     * Set the node string value
+     * @param string value
+     * @param offset string offset
+     * @param length string length
+     */
+    public void string(final byte[] string, final int offset, final int length) {
+        final int nodeLength = Math.min(STRING_LENGTH, length);
+        if (nodeLength >= 1) {
+            nativeByteArray(offset, string, STRING_OFFSET, length);
         }
     }
 
+    /**
+     * Get the string value
+     * @param string result
+     */
     public void string(final byte[] string) {
         final byte header = header();
         nativeByteArray(STRING_OFFSET, Header.stringLength(header), string);
     }
 
-    public byte string(int position) {
+    /**
+     * Get the byte at position
+     * @param position string position (zero based)
+     * @return byte
+     */
+    public byte charAt(final int position) {
         return nativeByte(STRING_OFFSET + position);
     }
 
-    public void string(int position, byte ch) {
+    /**
+     * Set the byte at position
+     * @param position string position (zero based)
+     * @param ch character
+     */
+    public void charAt(final int position, final byte ch) {
         nativeByte(STRING_OFFSET + position, ch);
     }
 
-    protected void moveString(final int position, final int length) {
+    /**
+     * Deletes the substring before position
+     * @param position string position (zero based)
+     * @param length  string length
+     */
+    protected void removePrefix(final int position, final int length) {
         if (length >= 1) {
-            long stringOffset = fieldOffset(STRING_OFFSET);
-            MemorySegment.copy(memorySegment(), stringOffset + position,
-                memorySegment(), stringOffset, length);
+            final long stringOffset = fieldOffset(STRING_OFFSET);
+            final MemorySegment memory = memorySegment();
+            MemorySegment.copy(memory, stringOffset + position,
+                memory, stringOffset, length);
         }
         header(Header.stringLength(header(), length));
     }
 
-    public void copy(final Node srcNode) {
-        MemorySegment.copy(srcNode.memorySegment(), srcNode.fieldOffset(0),
+    /**
+     * Copy source to this node
+     * @param source node
+     */
+    public void copy(final Node source) {
+        MemorySegment.copy(source.memorySegment(), source.fieldOffset(0),
             this.memorySegment(), this.fieldOffset(0), BYTES);
     }
 
@@ -198,7 +305,7 @@ public class Node extends BlockFlyweight {
             builder.append(new String(bytes, 0, stringLength));
         }
         builder.append('\"');
-        if (Header.includeString(header)) {
+        if (Header.containsString(header)) {
             builder.append('.');
         }
 
@@ -207,7 +314,7 @@ public class Node extends BlockFlyweight {
             builder.append(" [");
             for (int i = 0; i < count; ++i) {
                 builder.append((char) key(i));
-                if (includeKey(i)) {
+                if (containsKey(i)) {
                     builder.append('.');
                 } else {
                     builder.append('=').append(index(i));
@@ -224,7 +331,7 @@ public class Node extends BlockFlyweight {
         return append(new StringBuilder(64)).toString();
     }
 
-    public static final class Address {
+    protected static final class Address {
 
         // address bit layout
         private static final int BLOCK_OFFSET_BITS = 0;
@@ -251,29 +358,29 @@ public class Node extends BlockFlyweight {
     }
 
     // header helpers
-    public static final class Header {
+    protected static final class Header {
 
         // bit layout
-        private static final int STRING_COMPLETE_OFFSET = 0;
-        private static final int STRING_COMPLETE_LENGTH = 1;
-        private static final int STRLEN_OFFSET = STRING_COMPLETE_OFFSET + STRING_COMPLETE_LENGTH;
+        private static final int CONTAINS_STRING_OFFSET = 0;
+        private static final int CONTAINS_STRING_LENGTH = 1;
+        private static final int STRLEN_OFFSET = CONTAINS_STRING_OFFSET + CONTAINS_STRING_LENGTH;
         private static final int STRLEN_LENGTH = 3;
         private static final int INDEX_COUNT_OFFSET = STRLEN_OFFSET + STRLEN_LENGTH;
         private static final int INDEX_COUNT_LENGTH = 4;
 
-        private static final byte STRING_COMPLETE_MASK = 0xff >>> (Byte.SIZE - STRING_COMPLETE_LENGTH);
+        private static final byte CONTAINS_STRING_MASK = 0xff >>> (Byte.SIZE - CONTAINS_STRING_LENGTH);
         private static final byte INDEX_COUNT_MASK = 0xff >>> (Byte.SIZE - INDEX_COUNT_LENGTH);
         private static final byte STRLEN_MASK = 0xff >>> (Byte.SIZE - STRLEN_LENGTH);
 
-        public static boolean includeString(final byte header) {
-            return ((header >>> STRING_COMPLETE_OFFSET) & STRING_COMPLETE_MASK) != 0;
+        public static boolean containsString(final byte header) {
+            return ((header >>> CONTAINS_STRING_OFFSET) & CONTAINS_STRING_MASK) != 0;
         }
 
-        public static byte includeString(final byte header, final boolean value) {
+        public static byte containsString(final byte header, final boolean value) {
             if (value) {
-                return (byte) (header | (STRING_COMPLETE_MASK << STRING_COMPLETE_OFFSET));
+                return (byte) (header | (CONTAINS_STRING_MASK << CONTAINS_STRING_OFFSET));
             } else {
-                return (byte) (header & ~(STRING_COMPLETE_MASK << STRING_COMPLETE_OFFSET));
+                return (byte) (header & ~(CONTAINS_STRING_MASK << CONTAINS_STRING_OFFSET));
             }
         }
 
