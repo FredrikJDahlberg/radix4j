@@ -189,11 +189,9 @@ public class Node extends BlockFlyweight {
      * Set the index at the given position
      * @param position index posiiton
      * @param index new alue
-     * @return this
      */
-    public Node index(final int position, final int index) {
+    public void index(final int position, final int index) {
         nativeInt(INDEX_OFFSET + position * Integer.BYTES, index);
-        return this;
     }
 
     /**
@@ -293,6 +291,11 @@ public class Node extends BlockFlyweight {
             this.memorySegment(), this.fieldOffset(0), BYTES);
     }
 
+    /**
+     * Appends string representation of the object to the builder.
+     * @param builder string builder
+     * @return builder
+     */
     @Override
     public StringBuilder append(StringBuilder builder) {
         byte header = header();
@@ -326,6 +329,10 @@ public class Node extends BlockFlyweight {
         return builder.append('}');
     }
 
+    /**
+     * Returns a string representation of the object.
+     * @return string
+     */
     @Override
     public String toString() {
         return append(new StringBuilder(64)).toString();

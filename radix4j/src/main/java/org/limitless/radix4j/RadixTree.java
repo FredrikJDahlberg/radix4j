@@ -3,7 +3,6 @@ package org.limitless.radix4j;
 import org.limitless.fsmp4j.BlockPool;
 
 import java.lang.foreign.Arena;
-import java.security.InvalidParameterException;
 import java.util.Arrays;
 import java.util.function.Consumer;
 
@@ -35,12 +34,12 @@ public class RadixTree {
     }
 
     /**
-     * Constructs an emtpy tree with the given segment size
+     * Constructs an empty tree with the given segment size
      * @param blocksPerSegment segment size
      */
     public RadixTree(final int blocksPerSegment) {
         if (blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCKS_PER_SEGMENT) {
-            throw new InvalidParameterException("invalid number of blocks per segment");
+            throw new IllegalArgumentException("invalid number of blocks per segment");
         }
         this.blocksPerSegment = blocksPerSegment;
         initiate(blocksPerSegment);
@@ -238,11 +237,19 @@ public class RadixTree {
         pool.close();
     }
 
+    /**
+     * Returns a string representation of the object.
+     * @return string
+     */
     @Override
     public String toString() {
         return "RadixTree{ size = " + size + ", " + pool + "}";
     }
 
+    /**
+     * Returns the number of allocated blocks
+     * @return block count
+     */
     protected int allocatedBlocks() {
         return allocatedBlocks;
     }
