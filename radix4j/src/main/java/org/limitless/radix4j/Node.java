@@ -319,10 +319,8 @@ public class Node extends BlockFlyweight {
                 builder.append((char) key(i));
                 if (containsKey(i)) {
                     builder.append('.');
-                } else {
-                    builder.append('=').append(index(i));
                 }
-                builder.append(',').append(' ');
+                builder.append('=').append(index(i)).append(',');
             }
             builder.append(']');
         }

@@ -194,7 +194,12 @@ public class RadixTree {
                 final int count = Header.indexCount(header);
                 final boolean contains = Header.containsString(header);
                 final int position = search.pathKeyPositions[i + 1];
-                node.removeIndex(position);
+                final boolean containsKey = node.containsKey(position);
+                if (containsKey) {
+                    node.index(position, EMPTY_BLOCK);
+                } else {
+                    node.removeIndex(position);
+                }
                 if (count >= 2 || contains) {
                     break;
                 } else {
@@ -390,7 +395,7 @@ public class RadixTree {
         }
         node
             .header(mismatch, remainingString == 0, 1)
-            .index(0, node.charAt(mismatch), offset, remainingNode == 1);
+            .index(0, node.charAt(mismatch), offset, remainingNode <= 1 && count == 0); //  containsKey
         return addKey(remainingString, key, keyPos, node);
     }
 
