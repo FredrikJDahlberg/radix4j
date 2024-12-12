@@ -338,24 +338,21 @@ public class RadixTreeTest {
             " segments = 1, bytes = 16 384 }}").compareTo(tree.toString()));
     }
 
-    @Disabled
     @Test
-    public void benchmark100M() {
-        final int count = 100_000_000;
+    public void benchmark10M() {
+        final int count = 10_000_000;
         final var tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
         final String prefix = "abcdefghijklmnop-";
-        long elapsed = 0;
-        for (int i = 1; i <= count; ++i) {
-            final long timestamp = System.currentTimeMillis();
-            final boolean success = tree.add(prefix + i);
-            elapsed += System.currentTimeMillis() - timestamp;
-            assertTrue(success);
-        }
-        System.out.println(tree);
-        System.out.printf("Add     : %,d strings in %,6d ms\n", count, elapsed);
 
-        elapsed = 0;
         long timestamp = System.currentTimeMillis();
+        for (int i = 1; i <= count; ++i) {
+            assertTrue(tree.add(prefix + i));
+        }
+        System.out.printf("Add     : %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
+
+        final String string = tree.toString();
+
+        timestamp = System.currentTimeMillis();
         final int[] counts = { 0 };
         tree.forEach(node -> {
             final byte header = node.header();
@@ -369,47 +366,22 @@ public class RadixTreeTest {
                 }
             }
         });
-        elapsed += System.currentTimeMillis() - timestamp;
-        System.out.printf("ForEach : %,d strings in %,6d ms\n", counts[0], elapsed);
+        System.out.printf("ForEach : %,d strings in %,6d ms\n", counts[0], System.currentTimeMillis() - timestamp);
 
-        elapsed = 0;
+        timestamp = System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
-            timestamp = System.currentTimeMillis();
-            final boolean success = tree.contains(prefix + i);
-            elapsed += System.currentTimeMillis() - timestamp;
-            assertTrue(success);
+            assertTrue(tree.contains(prefix + i));
         }
-        System.out.printf("Contains: %,d strings in %,6d ms\n", count, elapsed);
+        System.out.printf("Contains: %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
 
-        elapsed = 0;
+        timestamp = System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
-            timestamp = System.currentTimeMillis();
-            final boolean success = tree.remove(prefix + i);
-            elapsed += System.currentTimeMillis() - timestamp;
-            assertTrue(success);
+            assertTrue(tree.remove(prefix + i));
         }
-        System.out.printf("Remove  : %,d strings in %,6d ms\n", count, elapsed);
+        System.out.printf("Remove  : %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
 
+        System.out.println(string);
         assertEmpty(tree);
-    }
-
-    @Disabled
-    @Test
-    public void hashSetMemoryUsage() {
-        final HashSet<Integer> set = new HashSet<>(101);
-        final Runtime runtime = Runtime.getRuntime();
-        for (int i = 100_000_000; i <= 110_000_000; ++i) {
-            assertTrue(set.add(i));
-            if (i % 10_000_000 == 0) {
-                System.out.printf("set: free = %,d MB\n", runtime.freeMemory() / 1024 / 1024);
-            }
-        }
-
-        final RadixTree tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
-        for (int i = 100_000_000; i <= 110_000_000; ++i) {
-            assertTrue(tree.add("" + i));
-        }
-        System.out.printf("tree: lim = %,d MB\n", tree.allocatedBlocks() * 64 / 1024 / 1024);
     }
 
     private void check(RadixTree tree, String...strings) {

@@ -22,6 +22,5 @@ dependencies {
 }
 
 jmh {
-//    includes = ['Benchmark']
-    includes = ['RadixTreeBenchmark']
+    includes = ['Benchmark']
 }

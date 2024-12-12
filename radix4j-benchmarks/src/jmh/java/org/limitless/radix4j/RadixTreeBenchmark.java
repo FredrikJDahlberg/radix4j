@@ -60,4 +60,15 @@ public class RadixTreeBenchmark extends BaseBenchmark {
     public boolean radixTreeRemove(final FullTree state) {
         return state.updateStats(state.tree.remove(state.stringOffset, STRING_LENGTH, strings));
     }
+
+    @Benchmark
+    @Measurement(iterations = 2, batchSize = 1)
+    @BenchmarkMode(Mode.SingleShotTime)
+    public int radixTreeForEach(final FullTree state) {
+        int[] result = {0};
+        state.tree.forEach(node -> {
+            ++result[0];
+        });
+        return result[0];
+    }
 }
