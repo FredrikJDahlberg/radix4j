@@ -10,7 +10,7 @@ public class Node extends BlockFlyweight {
     protected static final int EMPTY_BLOCK = 0;
     protected static final byte EMPTY_KEY = 0;
 
-    protected static final int INDEX_COUNT = 11;
+    protected static final int BLOCK_COUNT = 11;
     protected static final int KEY_LENGTH = 1;
 
     // node byte layout
@@ -20,10 +20,10 @@ public class Node extends BlockFlyweight {
     protected static final int STRING_LENGTH = 5;
     protected static final int CONTAINS_OFFSET = STRING_OFFSET + STRING_LENGTH;
     protected static final int CONTAINS_LENGTH = 2;
-    protected static final int INDEX_OFFSET = CONTAINS_OFFSET + CONTAINS_LENGTH;
-    protected static final int INDEX_LENGTH = INDEX_COUNT * Integer.BYTES;
-    protected static final int KEYS_OFFSET = INDEX_OFFSET + INDEX_LENGTH;
-    protected static final int KEYS_LENGTH = INDEX_COUNT * KEY_LENGTH;
+    protected static final int BLOCK_OFFSET = CONTAINS_OFFSET + CONTAINS_LENGTH;
+    protected static final int BLOCK_LENGTH = BLOCK_COUNT * Integer.BYTES;
+    protected static final int KEYS_OFFSET = BLOCK_OFFSET + BLOCK_LENGTH;
+    protected static final int KEYS_LENGTH = BLOCK_COUNT * KEY_LENGTH;
     protected static final int PAD_OFFSET = KEYS_OFFSET + KEYS_LENGTH;
     protected static final int PAD_LENGTH = 1;
     protected static final int BYTES = PAD_OFFSET + PAD_LENGTH;
@@ -77,11 +77,11 @@ public class Node extends BlockFlyweight {
      * @param contains true when the key is included
      * @return this
      */
-    public Node addIndex(final byte key, final int offset, boolean contains) {
+    public Node addChild(final byte key, final int offset, boolean contains) {
         final byte header = header();
-        final int count = Header.indexCount(header);
-        header(Header.indexCount(header, count + 1));
-        index(count, key, offset, contains);
+        final int count = Header.children(header);
+        header(Header.children(header, count + 1));
+        child(count, key, offset, contains);
         return this;
     }
 
@@ -89,15 +89,15 @@ public class Node extends BlockFlyweight {
      * Remove the index at the given position.
      * @param position index position
      */
-    public void removeIndex(int position) {
+    public void removeChild(int position) {
         final byte header = header();
-        final int newCount = Header.indexCount(header) - 1;
+        final int newCount = Header.children(header) - 1;
         if (position != newCount) {
             key(position, key(newCount));
             containsKey(position, containsKey(newCount));
-            index(position, index(newCount));
+            child(position, child(newCount));
         }
-        header(Header.indexCount(header, newCount));
+        header(Header.children(header, newCount));
     }
 
     /**
@@ -126,7 +126,7 @@ public class Node extends BlockFlyweight {
     public Node header(final int length, final boolean contains, final int count) {
         byte header;
         header = Header.stringLength(0, length);
-        header = Header.indexCount(header, count);
+        header = Header.children(header, count);
         header = Header.containsString(header, contains);
         header(header);
         return this;
@@ -166,7 +166,7 @@ public class Node extends BlockFlyweight {
      */
     public void containsKey(final int position, final boolean included) {
         final int index = position / Byte.SIZE;
-        byte flag = (byte) (1 << (position % Byte.SIZE));
+        final byte flag = (byte) (1 << (position % Byte.SIZE));
         byte contains = nativeByte(CONTAINS_OFFSET + index);
         if (included) {
             contains |= flag;
@@ -177,21 +177,21 @@ public class Node extends BlockFlyweight {
     }
 
     /**
-     * Get the index at the given position
+     * Get the block index at the given position
      * @param position index position
-     * @return index
+     * @return block index
      */
-    public int index(final int position) {
-        return nativeInt(INDEX_OFFSET + position * Integer.BYTES);
+    public int child(final int position) {
+        return nativeInt(BLOCK_OFFSET + position * Integer.BYTES);
     }
 
     /**
-     * Set the index at the given position
-     * @param position index posiiton
-     * @param index new alue
+     * Set the block index at the given position
+     * @param position index position
+     * @param block index
      */
-    public void index(final int position, final int index) {
-        nativeInt(INDEX_OFFSET + position * Integer.BYTES, index);
+    public void child(final int position, final int block) {
+        nativeInt(BLOCK_OFFSET + position * Integer.BYTES, block);
     }
 
     /**
@@ -201,9 +201,9 @@ public class Node extends BlockFlyweight {
      * @param offset  child offset
      * @param included flag
      */
-    public void index(final int position, final byte key, final int offset, boolean included) {
+    public void child(final int position, final byte key, final int offset, boolean included) {
         key(position, key);
-        index(position, offset);
+        child(position, offset);
         containsKey(position, included);
     }
 
@@ -244,9 +244,10 @@ public class Node extends BlockFlyweight {
      * Get the string value
      * @param string result
      */
-    public void string(final byte[] string) {
+    public void string(final int offset, final int length, final byte[] string) {
         final byte header = header();
-        nativeByteArray(STRING_OFFSET, Header.stringLength(header), string);
+        final int stringLength = Math.min(length, Header.stringLength(header));
+        nativeByteArray(STRING_OFFSET + offset, stringLength, string);
     }
 
     /**
@@ -312,7 +313,7 @@ public class Node extends BlockFlyweight {
             builder.append('.');
         }
 
-        final int count = Header.indexCount(header);
+        final int count = Header.children(header);
         if (count >= 1) {
             builder.append(" [");
             for (int i = 0; i < count; ++i) {
@@ -320,7 +321,7 @@ public class Node extends BlockFlyweight {
                 if (containsKey(i)) {
                     builder.append('.');
                 }
-                builder.append('=').append(index(i)).append(',');
+                builder.append('=').append(child(i)).append(',');
             }
             builder.append(']');
         }
@@ -338,12 +339,11 @@ public class Node extends BlockFlyweight {
 
     protected static final class Address {
 
-        // address bit layout
+        // bit layout
         private static final int BLOCK_OFFSET_BITS = 0;
         private static final int BLOCK_LENGTH_BITS = 16;
         private static final int SEGMENT_OFFSET_BITS = BLOCK_OFFSET_BITS + BLOCK_LENGTH_BITS;
         private static final int SEGMENT_LENGTH_BITS = 16;
-        private static final int SIZE = SEGMENT_OFFSET_BITS + SEGMENT_LENGTH_BITS;
 
         private static final int BLOCK_MASK = -1 >>> (Integer.SIZE - BLOCK_LENGTH_BITS);
         private static final int SEGMENT_MASK = -1 >>> (Integer.SIZE - SEGMENT_LENGTH_BITS);
@@ -362,7 +362,6 @@ public class Node extends BlockFlyweight {
         }
     }
 
-    // header helpers
     protected static final class Header {
 
         // bit layout
@@ -389,11 +388,11 @@ public class Node extends BlockFlyweight {
             }
         }
 
-        public static int indexCount(final int header) {
+        public static int children(final int header) {
             return (header >>> INDEX_COUNT_OFFSET) & INDEX_COUNT_MASK;
         }
 
-        public static byte indexCount(final int header, final int count) {
+        public static byte children(final int header, final int count) {
             return (byte) ((header & ~(INDEX_COUNT_MASK << INDEX_COUNT_OFFSET)) | ((count & INDEX_COUNT_MASK) << INDEX_COUNT_OFFSET));
         }
 

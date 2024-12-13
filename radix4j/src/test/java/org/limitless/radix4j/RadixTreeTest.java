@@ -1,9 +1,6 @@
 package org.limitless.radix4j;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-
-import java.util.HashSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -13,7 +10,6 @@ public class RadixTreeTest {
 
     @Test
     public void addRemoveContainsBasics() {
-
         final var tree = new RadixTree();
         check(tree, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
     }
@@ -27,7 +23,7 @@ public class RadixTreeTest {
         new Checker().check(tree,
             node -> {
                 assertEquals("cab", getString(node));
-                assertEquals(2, Header.indexCount(node.header()));
+                assertEquals(2, Header.children(node.header()));
                 assertEquals('b', node.key(0));
                 assertFalse(node.containsKey(0));
                 assertEquals('s', node.key(1));
@@ -36,13 +32,13 @@ public class RadixTreeTest {
             node -> {
                 assertEquals("a", getString(node));
                 assertFalse(Header.containsString(node.header()));
-                assertEquals(1, Header.indexCount(node.header()));
+                assertEquals(1, Header.children(node.header()));
                 assertEquals('g', node.key(0));
             },
             node -> {
                 assertEquals("e", getString(node));
                 assertTrue(Header.containsString(node.header()));
-                assertEquals(0, Header.indexCount(node.header()));
+                assertEquals(0, Header.children(node.header()));
             }
         );
     }
@@ -271,17 +267,16 @@ public class RadixTreeTest {
         addContains(tree, "cat");
         addContains(tree, "cats");
         assertEquals(2, tree.size());
-
         assertTrue(tree.remove("cat"));
+        tree.forEach(System.out::println);
         assertTrue(tree.contains("cats"));
         assertEquals(1, tree.size());
         new Checker().check(tree,
             node -> {
                 final byte header = node.header();
                 assertFalse(Header.containsString(header));
-                assertEquals(1, Header.indexCount(header));
+                assertEquals(1, Header.children(header));
                 assertEquals("cat", getString(node));
-
                 assertEquals('s', (char) node.key(0));
                 assertTrue(node.containsKey(0));
             }
@@ -343,7 +338,6 @@ public class RadixTreeTest {
         final int count = 10_000_000;
         final var tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
         final String prefix = "abcdefghijklmnop-";
-
         long timestamp = System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
             assertTrue(tree.add(prefix + i));
@@ -351,15 +345,14 @@ public class RadixTreeTest {
         System.out.printf("Add     : %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
 
         final String string = tree.toString();
-
-        timestamp = System.currentTimeMillis();
         final int[] counts = { 0 };
+        timestamp = System.currentTimeMillis();
         tree.forEach(node -> {
             final byte header = node.header();
             if (Header.containsString(header)) {
                 ++counts[0];
             }
-            final int keys = Header.indexCount(header);
+            final int keys = Header.children(header);
             for (int i = 0; i < keys; ++i) {
                 if (node.containsKey(i)) {
                     ++counts[0];
@@ -379,8 +372,8 @@ public class RadixTreeTest {
             assertTrue(tree.remove(prefix + i));
         }
         System.out.printf("Remove  : %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
-
         System.out.println(string);
+
         assertEmpty(tree);
     }
 
@@ -433,7 +426,7 @@ public class RadixTreeTest {
         final byte header = node.header();
         final int length = Node.Header.stringLength(header);
         final byte[] bytes = new byte[length];
-        node.string(bytes);
+        node.string(0, bytes.length, bytes);
         return new String(bytes, 0, length);
     }
 }
