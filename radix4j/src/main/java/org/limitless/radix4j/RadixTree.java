@@ -279,7 +279,7 @@ public class RadixTree {
         search.pathCount = 1;
 
         while (search.pathCount >= 1) {
-            final int block = Path.block(search.popPath());
+            final int block = Path.block(search.pathPop());
             final long address = Address.fromOffset(block);
             pool.get(address, node);
 
@@ -290,7 +290,7 @@ public class RadixTree {
             for (int i = 0; i < count; ++i) {
                 final int childBlock = node.child(i);
                 if (childBlock != EMPTY_BLOCK) {
-                    search.pushPath(node.child(i));
+                    search.pushPath(childBlock);
                 }
             }
         }
@@ -333,6 +333,7 @@ public class RadixTree {
         if (node.equals(root)) {
             root.wrap(parent);
         }
+
         final int position = context.keyPos;
         if (position >= 0) {
             context.parent.child(position, parent.offset());
@@ -595,8 +596,8 @@ public class RadixTree {
             return true;
         }
 
-        long popPath() {
-            return Path.block(path[--pathCount]);
+        long pathPop() {
+            return path[--pathCount];
         }
 
         void pushPath(final int block) {
@@ -606,11 +607,11 @@ public class RadixTree {
             path[pathCount++] = Path.block(0, block);
         }
 
-        void pushPath(int offset, int keyPosition) {
+        void pushPath(int block, int keyPosition) {
             if (pathCount >= path.length) {
                 path = Arrays.copyOf(path, path.length * 2);
             }
-            path[pathCount] = Path.path((byte) 0, keyPosition, offset);
+            path[pathCount] = Path.path((byte) 0, keyPosition, block);
             ++pathCount;
         }
     }
@@ -619,14 +620,17 @@ public class RadixTree {
 
         private static final int BLOCK_OFFSET = 0;
         private static final int BLOCK_LENGTH = Integer.SIZE;
-        private static final int KEY_OFFSET = BLOCK_OFFSET + BLOCK_LENGTH;
-        private static final int KEY_LENGTH = Byte.SIZE;
-        private static final int POSITION_OFFSET = KEY_OFFSET + KEY_LENGTH;
+        private static final int POSITION_OFFSET = BLOCK_OFFSET + BLOCK_LENGTH;
         private static final int POSITION_LENGTH = Byte.SIZE;
+        private static final int CONTAINS_OFFSET = POSITION_OFFSET + POSITION_LENGTH;
+        private static final int CONTAINS_LENGTH = Byte.SIZE;
+        private static final int KEY_OFFSET = CONTAINS_OFFSET + CONTAINS_LENGTH;
+        private static final int KEY_LENGTH = Byte.SIZE;
 
         private static final long BLOCK_MASK = -1L >>> (Long.SIZE - BLOCK_LENGTH);
         private static final long KEY_MASK = -1L >>> (Long.SIZE - KEY_LENGTH);
         private static final long POSITION_MASK = -1L >>> (Long.SIZE - POSITION_LENGTH);
+        private static final long CONTAINS_MASK = -1L >>> (Long.SIZE - CONTAINS_LENGTH);
 
         public static byte key(final long value) {
             return (byte) ((value >>> KEY_OFFSET) & KEY_MASK);
@@ -644,11 +648,28 @@ public class RadixTree {
             return (int) ((value >>> BLOCK_OFFSET) & BLOCK_MASK);
         }
 
+        public static boolean contains(final long value) {
+            return ((value >>> CONTAINS_OFFSET) & CONTAINS_MASK) != 0;
+        }
+
         public static long path(final byte key, final int position, final int block) {
             long value = 0;
+            value |= (position & POSITION_MASK) << POSITION_OFFSET;
             value |= ((block & BLOCK_MASK) << BLOCK_OFFSET);
             value |= (key & KEY_MASK) << KEY_OFFSET;
+            return value;
+        }
+
+        public static long path(final byte key, final byte position, final int block, final boolean contains) {
+            long value = 0;
+            value |= (block & BLOCK_MASK) << BLOCK_OFFSET;
             value |= (position & POSITION_MASK) << POSITION_OFFSET;
+            value |= (key & KEY_MASK) << KEY_OFFSET;
+            if (contains) {
+                value |= (CONTAINS_MASK << CONTAINS_OFFSET);
+            } else {
+                value &= ~(CONTAINS_MASK << CONTAINS_OFFSET);
+            }
             return value;
         }
     }

@@ -5,7 +5,7 @@ package org.limitless.radix4j;
  * <a href="https://leveluppp.ghost.io/advanced-bit-hacks/">...</a>
  * <a href="https://lemire.me/blog/2022/01/21/swar-explained-parsing-eight-digits/">...</a>
  */
-public class ByteUtils {
+public final class ByteUtils {
 
     private static final int INT_ONES = 0x01010101;
     private static final int INT_EIGHTS = 0x80808080;
@@ -46,12 +46,12 @@ public class ByteUtils {
 
     public static int bytePosition(final byte value, final int values) {
         final int position = Integer.numberOfTrailingZeros(hasByte(value, values));
-        return position == Integer.SIZE ? -1 : (position >>> 3);
+        return position == Integer.SIZE ? -1 : (position / Byte.SIZE);
     }
 
     public static int bytePosition(final byte value, final long values) {
         final int position = Long.numberOfTrailingZeros(hasByte(value, values));
-        return position == Long.SIZE ? -1 : (position >>> 3);
+        return position == Long.SIZE ? -1 : (position / Byte.SIZE);
     }
 
     public static int findBytePosition(byte value, final long values) {

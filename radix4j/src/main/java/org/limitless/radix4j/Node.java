@@ -3,6 +3,7 @@ package org.limitless.radix4j;
 import org.limitless.fsmp4j.BlockFlyweight;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 public class Node extends BlockFlyweight {
 
@@ -242,7 +243,9 @@ public class Node extends BlockFlyweight {
 
     /**
      * Get the string value
-     * @param string result
+     * @param offset source offset
+     * @param length destination length
+     * @param string destination
      */
     public void string(final int offset, final int length, final byte[] string) {
         final byte header = header();
@@ -251,7 +254,18 @@ public class Node extends BlockFlyweight {
     }
 
     /**
-     * Get the byte at position
+     * Get the string value
+     * @param offset source offset
+     * @param length destination length
+     * @param string destination
+     * @param dstOffset destination offset
+     */
+    public void string(final int offset, final int length, final byte[] string, final int dstOffset) {
+        nativeByteArray(STRING_OFFSET + offset, length, dstOffset, string);
+    }
+
+    /**
+     * Get the character at position
      * @param position string position (zero based)
      * @return byte
      */
@@ -260,7 +274,7 @@ public class Node extends BlockFlyweight {
     }
 
     /**
-     * Set the byte at position
+     * Set the character at position
      * @param position string position (zero based)
      * @param ch character
      */

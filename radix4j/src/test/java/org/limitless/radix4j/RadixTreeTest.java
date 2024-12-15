@@ -9,9 +9,17 @@ import static org.limitless.radix4j.Node.Header;
 public class RadixTreeTest {
 
     @Test
+    public void testForEach() {
+        final var tree = new RadixTree();
+        assertTrue(tree.add("money"));
+        assertTrue(tree.add("monkey"));
+        assertTrue(tree.add("montage"));
+    }
+
+    @Test
     public void addRemoveContainsBasics() {
         final var tree = new RadixTree();
-        check(tree, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
+        check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
     }
 
     @Test
@@ -53,11 +61,17 @@ public class RadixTreeTest {
     public void addLongString() {
         final var tree = new RadixTree();
         final String prefix = "12345678901234567890-";
-        check(tree,
+        check(tree, false,
             prefix + "a", prefix + "b", prefix + "c", prefix + "d",
             prefix + "e", prefix + "f", prefix + "g", prefix + "h",
             prefix + "i", prefix + "j", prefix + "k", prefix + "l",
             prefix + "m", prefix + "n", prefix + "o", prefix + "p");
+        assertTrue(tree.remove(prefix + "a"));
+        assertTrue(tree.remove(prefix + "b"));
+        assertTrue(tree.remove(prefix + "c"));
+        assertTrue(tree.remove(prefix + "d"));
+        assertTrue(tree.remove(prefix + "e"));
+        tree.forEach(System.out::println);
     }
 
     @Test
