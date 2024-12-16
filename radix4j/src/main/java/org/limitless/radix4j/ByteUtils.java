@@ -13,27 +13,27 @@ public final class ByteUtils {
     private static final long LONG_EIGHTS = 0x8080808080808080L;
 
     public static int hasLess(final byte value, final int values) {
-        return ((values) - INT_ONES * value) & ~(values) & INT_EIGHTS;
+        return (values - INT_ONES * value) & ~values & INT_EIGHTS;
     }
 
     public static long hasLess(final byte value, final long values) {
-        return ((values) - LONG_ONES * value) & ~(values) & LONG_EIGHTS;
+        return (values - LONG_ONES * value) & ~values & LONG_EIGHTS;
     }
 
     public static int hasGreater(final byte limit, final int values) {
-        return ((values) + INT_ONES * (127 - limit) | values) & ~(values) & INT_EIGHTS;
+        return (values + INT_ONES * (127 - limit) | values) & ~values & INT_EIGHTS;
     }
 
     public static long hasGreater(final long values, final byte limit) {
-        return ((values) + LONG_ONES * (127 - limit) | values) & ~(values) & LONG_EIGHTS;
+        return (values + LONG_ONES * (127 - limit) | values) & ~values & LONG_EIGHTS;
     }
 
     public static int hasZeroByte(final int value) {
-        return ((value) - INT_ONES) & ~(value) & INT_EIGHTS;
+        return (value - INT_ONES) & ~value & INT_EIGHTS;
     }
 
     public static long hasZeroByte(final long value) {
-        return ((value) - LONG_ONES) & ~(value) & LONG_EIGHTS;
+        return (value - LONG_ONES) & ~value & LONG_EIGHTS;
     }
 
     public static int hasByte(final byte value, final int values) {

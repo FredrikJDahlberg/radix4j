@@ -3,7 +3,6 @@ package org.limitless.radix4j;
 import org.limitless.fsmp4j.BlockFlyweight;
 
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 
 public class Node extends BlockFlyweight {
 
@@ -366,8 +365,8 @@ public class Node extends BlockFlyweight {
         public static final int MAX_SEGMENTS = 1 << SEGMENT_LENGTH_BITS;
 
         public static long fromOffset(final int offset) {
-            int segment = ((offset >>> SEGMENT_OFFSET_BITS) & SEGMENT_MASK) + 1;
-            int block = (offset >>> BLOCK_OFFSET_BITS) & BLOCK_MASK;
+            final int segment = ((offset >>> SEGMENT_OFFSET_BITS) & SEGMENT_MASK) + 1;
+            final int block = (offset >>> BLOCK_OFFSET_BITS) & BLOCK_MASK;
             return ((long) segment) << Integer.SIZE | block;
         }
 

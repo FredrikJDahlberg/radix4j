@@ -279,7 +279,7 @@ public class RadixTree {
         search.pathCount = 1;
 
         while (search.pathCount >= 1) {
-            final int block = Path.block(search.pathPop());
+            final int block = Path.block(search.path[--search.pathCount]);
             final long address = Address.fromOffset(block);
             pool.get(address, node);
 
@@ -290,7 +290,8 @@ public class RadixTree {
             for (int i = 0; i < count; ++i) {
                 final int childBlock = node.child(i);
                 if (childBlock != EMPTY_BLOCK) {
-                    search.pushPath(childBlock);
+                    search.ensureCapacity();
+                    search.path[search.pathCount++] = Path.block(0, childBlock);
                 }
             }
         }
@@ -302,6 +303,10 @@ public class RadixTree {
         final int remaining = stringLength - search.mismatch;
         int consumed = 0;
         final byte key = length >= 1 ? string[offset] : search.key;
+
+        if (search.emptyOffset != EMPTY_BLOCK) {
+            pool.get(Address.fromOffset(search.emptyOffset), search.node);
+        }
         switch (search.mismatchType) {
             case Search.COMMON_PREFIX:
                 consumed = splitNode(remaining, length, key, search.keyPos, search.node, search.mismatch);
@@ -460,7 +465,7 @@ public class RadixTree {
         ++allocatedBlocks;
         final int segments = allocatedBlocks / blocksPerSegment;
         if (segments >= Address.MAX_SEGMENTS) {
-            throw new IllegalStateException("too many segments " + segments);
+            throw new IllegalStateException("out of segments " + segments);
         }
 
         pool.allocate(node);
@@ -498,9 +503,9 @@ public class RadixTree {
         int mismatchType;
         int mismatch;
         int position;
-
         byte key;
         int keyPos;
+        int emptyOffset;
 
         final Node node;
         final Node parent;
@@ -521,21 +526,21 @@ public class RadixTree {
          * @param pool   block pool
          * @return true when mismatch exists
          */
-        private boolean mismatch(final int offset, int length,
-                                 final byte[] string,
-                                 final boolean withPath,
-                                 final Node root,
-                                 final BlockPool<Node> pool) {
-            position = 0;
-            mismatch = 0;
+        boolean mismatch(final int offset, int length,
+                         final byte[] string,
+                         final boolean withPath,
+                         final Node root,
+                         final BlockPool<Node> pool) {
+            mismatchType = TYPE_NULL;
             key = NOT_FOUND;
             keyPos = NOT_FOUND;
-            mismatchType = TYPE_NULL;
+            position = 0;
+            mismatch = 0;
+            pathCount = 1;
+            emptyOffset = EMPTY_BLOCK;
             node.wrap(root);
             parent.wrap(root);
             path[0] = Path.block(0, root.offset());
-            pathCount = 1;
-
             boolean processString = true;
             byte header = node.header();
             int nodeLength = Header.stringLength(header);
@@ -570,13 +575,16 @@ public class RadixTree {
                             return !node.containsKey(keyPos);
                         }
                         processString = true;
+                    } else if (count < BLOCK_COUNT) {
+                        emptyOffset = node.offset();
                     }
                     parent.wrap(node);
 
                     final int childBlock = node.child(keyPos);
                     if (childBlock != EMPTY_BLOCK) {
                         if (withPath) {
-                            pushPath(childBlock, keyPos);
+                            ensureCapacity();
+                            path[pathCount++] = Path.path((byte) 0, keyPos, childBlock);
                         }
                         pool.get(Address.fromOffset(childBlock), node);
                         header = node.header();
@@ -596,23 +604,10 @@ public class RadixTree {
             return true;
         }
 
-        long pathPop() {
-            return path[--pathCount];
-        }
-
-        void pushPath(final int block) {
+        void ensureCapacity() {
             if (pathCount >= path.length) {
                 path = Arrays.copyOf(path, path.length * 2);
             }
-            path[pathCount++] = Path.block(0, block);
-        }
-
-        void pushPath(int block, int keyPosition) {
-            if (pathCount >= path.length) {
-                path = Arrays.copyOf(path, path.length * 2);
-            }
-            path[pathCount] = Path.path((byte) 0, keyPosition, block);
-            ++pathCount;
         }
     }
 
@@ -622,34 +617,23 @@ public class RadixTree {
         private static final int BLOCK_LENGTH = Integer.SIZE;
         private static final int POSITION_OFFSET = BLOCK_OFFSET + BLOCK_LENGTH;
         private static final int POSITION_LENGTH = Byte.SIZE;
-        private static final int CONTAINS_OFFSET = POSITION_OFFSET + POSITION_LENGTH;
-        private static final int CONTAINS_LENGTH = Byte.SIZE;
-        private static final int KEY_OFFSET = CONTAINS_OFFSET + CONTAINS_LENGTH;
+        private static final int KEY_OFFSET = POSITION_OFFSET + POSITION_LENGTH;
         private static final int KEY_LENGTH = Byte.SIZE;
 
         private static final long BLOCK_MASK = -1L >>> (Long.SIZE - BLOCK_LENGTH);
         private static final long KEY_MASK = -1L >>> (Long.SIZE - KEY_LENGTH);
         private static final long POSITION_MASK = -1L >>> (Long.SIZE - POSITION_LENGTH);
-        private static final long CONTAINS_MASK = -1L >>> (Long.SIZE - CONTAINS_LENGTH);
 
-        public static byte key(final long value) {
-            return (byte) ((value >>> KEY_OFFSET) & KEY_MASK);
+        public static int position(final long path) {
+            return (int) ((path >>> POSITION_OFFSET) & POSITION_MASK);
         }
 
-        public static int position(final long value) {
-            return (int) ((value >>> POSITION_OFFSET) & POSITION_MASK);
+        public static long block(final long  path, final int block) {
+            return path | ((block & BLOCK_MASK) << BLOCK_OFFSET);
         }
 
-        public static long block(final long  value, final int block) {
-            return value | ((block & BLOCK_MASK) << BLOCK_OFFSET);
-        }
-
-        public static int block(final long value) {
-            return (int) ((value >>> BLOCK_OFFSET) & BLOCK_MASK);
-        }
-
-        public static boolean contains(final long value) {
-            return ((value >>> CONTAINS_OFFSET) & CONTAINS_MASK) != 0;
+        public static int block(final long path) {
+            return (int) ((path >>> BLOCK_OFFSET) & BLOCK_MASK);
         }
 
         public static long path(final byte key, final int position, final int block) {
@@ -657,19 +641,6 @@ public class RadixTree {
             value |= (position & POSITION_MASK) << POSITION_OFFSET;
             value |= ((block & BLOCK_MASK) << BLOCK_OFFSET);
             value |= (key & KEY_MASK) << KEY_OFFSET;
-            return value;
-        }
-
-        public static long path(final byte key, final byte position, final int block, final boolean contains) {
-            long value = 0;
-            value |= (block & BLOCK_MASK) << BLOCK_OFFSET;
-            value |= (position & POSITION_MASK) << POSITION_OFFSET;
-            value |= (key & KEY_MASK) << KEY_OFFSET;
-            if (contains) {
-                value |= (CONTAINS_MASK << CONTAINS_OFFSET);
-            } else {
-                value &= ~(CONTAINS_MASK << CONTAINS_OFFSET);
-            }
             return value;
         }
     }

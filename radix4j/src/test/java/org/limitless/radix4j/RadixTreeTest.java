@@ -66,12 +66,32 @@ public class RadixTreeTest {
             prefix + "e", prefix + "f", prefix + "g", prefix + "h",
             prefix + "i", prefix + "j", prefix + "k", prefix + "l",
             prefix + "m", prefix + "n", prefix + "o", prefix + "p");
+        assertEquals(16, tree.size());
+
         assertTrue(tree.remove(prefix + "a"));
         assertTrue(tree.remove(prefix + "b"));
         assertTrue(tree.remove(prefix + "c"));
         assertTrue(tree.remove(prefix + "d"));
         assertTrue(tree.remove(prefix + "e"));
-        tree.forEach(System.out::println);
+        assertEquals(11, tree.size());
+
+        assertTrue(tree.add(prefix + "X"));
+        assertTrue(tree.add(prefix + "Y"));
+        assertTrue(tree.add(prefix + "Z"));
+        assertTrue(tree.add(prefix + "Q"));
+        assertTrue(tree.add(prefix + "W"));
+        assertTrue(tree.add(prefix + "U"));
+        assertEquals(17, tree.size());
+
+        final String[] strings = {
+            prefix + "f", prefix + "g", prefix + "h", prefix + "i",
+            prefix + "j", prefix + "k", prefix + "l", prefix + "X",
+            prefix + "Y", prefix + "Z", prefix + "Q", prefix + "U"
+        };
+        for (String string : strings) {
+            assertTrue(tree.contains(string));
+            assertTrue(tree.remove(string));
+        }
     }
 
     @Test
