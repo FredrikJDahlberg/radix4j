@@ -101,7 +101,7 @@ public final class ByteUtils {
         return result;
     }
 
-    public static void intToChars(int value, final int offset, final int length, final byte[] bytes) {
+    public static void intToChars(int value, final int offset, final byte[] bytes) {
         int pos = offset;
         while (value >= 10) {
             final int result = value / 10;

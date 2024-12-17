@@ -15,7 +15,7 @@ public class ByteUtilsBenchmark {
     @State(Scope.Thread)
     public static class ByteUtilsState {
         final long keys = 0x4847464544434241L;
-        byte key = 'A';
+        final byte key = 'A';
         final byte[] string = "ABCDEFGH".getBytes();
     }
 

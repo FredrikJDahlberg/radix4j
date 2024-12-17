@@ -50,7 +50,7 @@ public class Node extends BlockFlyweight {
      * @param offset comparison position
      * @param length remaining string length
      * @param string byte array
-     * @return the first mistmatch position or -1 when equal
+     * @return the first mismatch position or -1 when equal
      */
     public int mismatch(final int offset, final int length, final byte[] string) {
         long nodeString = nativeLong(HEADER_OFFSET);

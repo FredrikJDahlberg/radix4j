@@ -14,7 +14,7 @@ public class BaseBenchmark {
         for (int i = 0; i < SIZE; ++i) {
             System.arraycopy(STRING, 0, strings, offset, STRING_LENGTH);
             offset += STRING_LENGTH;
-            ByteUtils.intToChars(i, offset, STRING_LENGTH, strings);
+            ByteUtils.intToChars(i, offset, strings);
         }
     }
 
