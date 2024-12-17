@@ -248,7 +248,7 @@ public class RadixTree {
      */
     @Override
     public String toString() {
-        return "RadixTree{ size = " + size + ", " + pool + "}";
+        return String.format("RadixTree{ size = %,d, %s}", size, pool);
     }
 
     /**
@@ -526,7 +526,8 @@ public class RadixTree {
          * @param pool   block pool
          * @return true when mismatch exists
          */
-        boolean mismatch(final int offset, int length,
+        boolean mismatch(final int offset,
+                         int length,
                          final byte[] string,
                          final boolean withPath,
                          final Node root,
@@ -575,7 +576,7 @@ public class RadixTree {
                             return !node.containsKey(keyPos);
                         }
                         processString = true;
-                    } else if (count < BLOCK_COUNT) {
+                    } else if (length == 1 && count < BLOCK_COUNT) {
                         emptyOffset = node.offset();
                     }
                     parent.wrap(node);

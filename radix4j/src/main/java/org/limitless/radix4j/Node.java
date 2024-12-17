@@ -330,7 +330,8 @@ public class Node extends BlockFlyweight {
         if (count >= 1) {
             builder.append(" [");
             for (int i = 0; i < count; ++i) {
-                builder.append((char) key(i));
+                final char value = (char) key(i);
+                builder.append(value == EMPTY_KEY ? '@' :  value);
                 if (containsKey(i)) {
                     builder.append('.');
                 }

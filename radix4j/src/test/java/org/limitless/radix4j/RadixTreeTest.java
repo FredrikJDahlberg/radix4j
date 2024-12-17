@@ -9,6 +9,44 @@ import static org.limitless.radix4j.Node.Header;
 public class RadixTreeTest {
 
     @Test
+    public void reuseSlotOnlyAtLastChar() {
+        final var tree = new RadixTree();
+        final String prefix = "1234567890-";
+
+        assertTrue(tree.add(prefix + "A"));
+        assertTrue(tree.add(prefix + "B"));
+        assertTrue(tree.add(prefix + "C"));
+        assertTrue(tree.add(prefix + "D"));
+        assertTrue(tree.add(prefix + "E"));
+        assertTrue(tree.add(prefix + "F"));
+        assertTrue(tree.add(prefix + "G"));
+        assertTrue(tree.add(prefix + "H"));
+        assertTrue(tree.add(prefix + "I"));
+        assertTrue(tree.add(prefix + "J"));
+        assertTrue(tree.add(prefix + "K"));
+
+        assertTrue(tree.add(prefix + "L1"));
+        assertTrue(tree.add(prefix + "L2"));
+        assertTrue(tree.add(prefix + "L3"));
+        assertTrue(tree.add(prefix + "L4"));
+        assertTrue(tree.add(prefix + "L5"));
+        assertTrue(tree.add(prefix + "L6"));
+        assertTrue(tree.add(prefix + "L7"));
+        assertTrue(tree.add(prefix + "L8"));
+        assertTrue(tree.add(prefix + "L9"));
+        assertTrue(tree.add(prefix + "LA"));
+        assertTrue(tree.add(prefix + "LB"));
+
+        assertTrue(tree.remove(prefix + "J"));
+        assertTrue(tree.remove(prefix + "K"));
+        assertTrue(tree.add(prefix + "LX"));
+        assertTrue(tree.contains(prefix + "LX"));
+
+        assertTrue(tree.remove(prefix + "LA"));
+        assertTrue(tree.add(prefix + "LY"));
+    }
+
+    @Test
     public void testForEach() {
         final var tree = new RadixTree();
         assertTrue(tree.add("money"));
@@ -81,6 +119,7 @@ public class RadixTreeTest {
         assertTrue(tree.add(prefix + "Q"));
         assertTrue(tree.add(prefix + "W"));
         assertTrue(tree.add(prefix + "U"));
+        tree.forEach(System.out::println);
         assertEquals(17, tree.size());
 
         final String[] strings = {
