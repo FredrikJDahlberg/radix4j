@@ -63,7 +63,8 @@ public class RadixTree {
         if (string == null) {
             return false;
         }
-        return add(string.getBytes());
+        final byte[] bytes = string.getBytes();
+        return addString(0, bytes.length, bytes);
     }
 
     /**
@@ -75,7 +76,7 @@ public class RadixTree {
         if (string == null) {
             return false;
         }
-        return add(0, string.length, string);
+        return addString(0, string.length, string);
     }
 
     /**
@@ -89,20 +90,7 @@ public class RadixTree {
         if (offset < 0 || length <= 0 || string == null || offset + length > string.length) {
             return false;
         }
-
-        final byte header = root.header();
-        if (Header.stringLength(header) == 0 && Header.children(header) == 0) {
-            addString(offset, length, string, search.node.wrap(root));
-            ++size;
-            return true;
-        }
-        if (!search.mismatch(offset, length, string, false, root, pool)) {
-            return false;
-        }
-        addString(search.position + offset, length - search.position, string, search);
-        ++size;
-
-        return true;
+        return addString(offset, length, string);
     }
 
     /**
@@ -140,10 +128,7 @@ public class RadixTree {
         if (offset < 0 || length <= 0 || string == null || offset + length > string.length) {
             return false;
         }
-        if (isEmpty()) {
-            return false;
-        }
-        return !search.mismatch(offset, length, string, false, root, pool);
+        return containsString(offset, length, string);
     }
 
     /**
@@ -155,7 +140,8 @@ public class RadixTree {
         if (string == null) {
             return false;
         }
-        return remove(string.getBytes());
+        final byte[] bytes = string.getBytes();
+        return removeString(0, bytes.length, bytes);
     }
 
     /**
@@ -167,7 +153,7 @@ public class RadixTree {
         if (string == null) {
             return false;
         }
-        return remove(0, string.length, string);
+        return removeString(0, string.length, string);
     }
 
     /**
@@ -181,51 +167,7 @@ public class RadixTree {
         if (offset < 0 || length <= 0 || string == null || offset + length > string.length) {
             return false;
         }
-        if (isEmpty() || search.mismatch(offset, length, string, true, root, pool)) {
-            return false;
-        }
-        --size;
-
-        final Node node = search.node;
-        byte header = node.header();
-        if (search.key == EMPTY_KEY) {
-            node.header(Header.containsString(header, false));
-        } else {
-            final int position = search.keyPos;
-            final int block = node.child(position);
-            if (node.containsKey(position)) {
-                node.containsKey(position, false);
-            }
-            if (block == EMPTY_BLOCK) {
-                node.removeChild(position);
-            }
-        }
-        header = node.header();
-        if (Header.children(header) == 0 && !Header.containsString(header)) {
-            free(node);
-
-            for (int i = search.pathCount - 2; i >= 0; --i) {
-                final long path = search.path[i];
-                pool.get(Address.fromOffset(Path.block(path)), node);
-
-                header = node.header();
-                final int count = Header.children(header);
-                final boolean contains = Header.containsString(header);
-                final int position = Path.position(search.path[i + 1]);
-                final boolean containsKey = node.containsKey(position);
-                if (containsKey) {
-                    node.child(position, EMPTY_BLOCK);
-                } else {
-                    node.removeChild(position);
-                }
-                if (count >= 2 || contains) {
-                    break;
-                } else {
-                    free(node);
-                }
-            }
-        }
-        return true;
+        return removeString(offset, length, string);
     }
 
     /**
@@ -292,30 +234,20 @@ public class RadixTree {
         forEach(parent, consumer);
     }
 
-    private void forEach(final Node node, final Consumer<Node> consumer) {
-        search.path[0] = Path.block(0, node.offset());
-        search.pathCount = 1;
-
-        while (search.pathCount >= 1) {
-            final int block = Path.block(search.path[--search.pathCount]);
-            final long address = Address.fromOffset(block);
-            pool.get(address, node);
-
-            consumer.accept(node);
-
-            final byte header = node.header();
-            final int count = Header.children(header);
-            for (int i = 0; i < count; ++i) {
-                final int childBlock = node.child(i);
-                if (childBlock != EMPTY_BLOCK) {
-                    search.ensureCapacity();
-                    search.path[search.pathCount++] = Path.block(0, childBlock);
-                }
-            }
+    private boolean addString(int offset, int length, final byte[] string) {
+        final byte rootHeader = root.header();
+        if (Header.stringLength(rootHeader) == 0 && Header.children(rootHeader) == 0) {
+            addString(offset, length, string, search.node.wrap(root));
+            ++size;
+            return true;
         }
-    }
+        if (containsString(offset, length, string)) {
+            return false;
+        }
+        length -= search.position;
+        offset += search.position;
+        ++size;
 
-    private void addString(final int offset, final int length, final byte[] string, final Search search) {
         final byte header = search.node.header();
         final int stringLength = Header.stringLength(header);
         final int remaining = stringLength - search.mismatch;
@@ -348,6 +280,82 @@ public class RadixTree {
         if (length - consumed >= 1) {
             addString(offset + consumed, length - consumed, string, search.node);
         }
+        return true;
+    }
+
+    private boolean containsString(final int offset, final int length, final byte[] string) {
+        return !isEmpty() && !search.mismatch(offset, length, string, false, root, pool);
+    }
+
+    private boolean removeString(final int offset, final int length, final byte[] string) {
+        if (isEmpty() || search.mismatch(offset, length, string, true, root, pool)) {
+            return false;
+        }
+        --size;
+
+        final Node node = search.node;
+        byte header = node.header();
+        if (search.key == EMPTY_KEY) {
+            node.header(Header.containsString(header, false));
+        } else {
+            final int position = search.keyPos;
+            final int block = node.child(position);
+            if (node.containsKey(position)) {
+                node.containsKey(position, false);
+            }
+            if (block == EMPTY_BLOCK) {
+                node.removeChild(position);
+            }
+        }
+        header = node.header();
+        if (Header.children(header) == 0 && !Header.containsString(header)) {
+            free(node);
+
+            for (int i = search.pathCount - 2; i >= 0; --i) {
+                final long path = search.path[i];
+                pool.get(Address.fromOffset(Path.block(path)), node);
+
+                header = node.header();
+                final int count = Header.children(header);
+                final boolean contains = Header.containsString(header);
+                final int position = Path.position(search.path[i + 1]);
+                final boolean containsKey = node.containsKey(position);
+                if (containsKey) {
+                    node.child(position, EMPTY_BLOCK);
+                } else {
+                    node.removeChild(position);
+                }
+                if (count >= 2 || contains) {
+                    break;
+                } else {
+                    free(node);
+                }
+            }
+        }
+        return true;
+    }
+
+    private void forEach(final Node node, final Consumer<Node> consumer) {
+        search.path[0] = Path.block(0, node.offset());
+        search.pathCount = 1;
+
+        while (search.pathCount >= 1) {
+            final int block = Path.block(search.path[--search.pathCount]);
+            final long address = Address.fromOffset(block);
+            pool.get(address, node);
+
+            consumer.accept(node);
+
+            final byte header = node.header();
+            final int count = Header.children(header);
+            for (int i = 0; i < count; ++i) {
+                final int childBlock = node.child(i);
+                if (childBlock != EMPTY_BLOCK) {
+                    search.ensureCapacity();
+                    search.path[search.pathCount++] = Path.block(0, childBlock);
+                }
+            }
+        }
     }
 
     private void addParent(int remainingNode, final byte key, int remainingString, final Search context) {
@@ -375,7 +383,7 @@ public class RadixTree {
                 .addChild(key, childBlock, remainingString == 1);
 
         }
-        if (block == 0) {
+        if (block == EMPTY_BLOCK) {
             free(node);
             node.wrap(parent);
         } else {
