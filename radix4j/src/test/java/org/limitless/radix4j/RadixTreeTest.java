@@ -12,36 +12,21 @@ public class RadixTreeTest {
     public void reuseSlotOnlyAtLastChar() {
         final var tree = new RadixTree();
         final String prefix = "1234567890-";
-
-        assertTrue(tree.add(prefix + "A"));
-        assertTrue(tree.add(prefix + "B"));
-        assertTrue(tree.add(prefix + "C"));
-        assertTrue(tree.add(prefix + "D"));
-        assertTrue(tree.add(prefix + "E"));
-        assertTrue(tree.add(prefix + "F"));
-        assertTrue(tree.add(prefix + "G"));
-        assertTrue(tree.add(prefix + "H"));
-        assertTrue(tree.add(prefix + "I"));
-        assertTrue(tree.add(prefix + "J"));
-        assertTrue(tree.add(prefix + "K"));
-
-        assertTrue(tree.add(prefix + "L1"));
-        assertTrue(tree.add(prefix + "L2"));
-        assertTrue(tree.add(prefix + "L3"));
-        assertTrue(tree.add(prefix + "L4"));
-        assertTrue(tree.add(prefix + "L5"));
-        assertTrue(tree.add(prefix + "L6"));
-        assertTrue(tree.add(prefix + "L7"));
-        assertTrue(tree.add(prefix + "L8"));
-        assertTrue(tree.add(prefix + "L9"));
-        assertTrue(tree.add(prefix + "LA"));
-        assertTrue(tree.add(prefix + "LB"));
-
+        final String[] strings = {
+            prefix + "A", prefix + "B", prefix + "C", prefix + "D",
+            prefix + "E", prefix + "F", prefix + "G", prefix + "H",
+            prefix + "I", prefix + "J", prefix + "K",
+            prefix + "L1", prefix + "L2", prefix + "L3", prefix + "L4",
+            prefix + "L5", prefix + "L6", prefix + "L7", prefix + "L8",
+            prefix + "L9", prefix + "LA", prefix + "LB"
+        };
+        for (String string : strings) {
+            assertTrue(tree.add(string));
+        }
         assertTrue(tree.remove(prefix + "J"));
         assertTrue(tree.remove(prefix + "K"));
         assertTrue(tree.add(prefix + "LX"));
         assertTrue(tree.contains(prefix + "LX"));
-
         assertTrue(tree.remove(prefix + "LA"));
         assertTrue(tree.add(prefix + "LY"));
     }
