@@ -60,6 +60,9 @@ public class RadixTree {
      * @return true when value is inserted
      */
     public boolean add(final String string) {
+        if (string == null) {
+            return false;
+        }
         return add(string.getBytes());
     }
 
@@ -69,6 +72,9 @@ public class RadixTree {
      * @return true when value is inserted
      */
     public boolean add(final byte[] string) {
+        if (string == null) {
+            return false;
+        }
         return add(0, string.length, string);
     }
 
@@ -105,7 +111,7 @@ public class RadixTree {
      * @return true if the string is present
      */
     public boolean contains(final String string) {
-        if (isEmpty()) {
+        if (string == null) {
             return false;
         }
         return contains(string.getBytes());
@@ -117,6 +123,9 @@ public class RadixTree {
      * @return true if the string is present
      */
     public boolean contains(final byte[] string) {
+        if (string == null) {
+            return false;
+        }
         return contains(0, string.length, string);
     }
 
@@ -131,6 +140,9 @@ public class RadixTree {
         if (offset < 0 || length <= 0 || string == null || offset + length > string.length) {
             return false;
         }
+        if (isEmpty()) {
+            return false;
+        }
         return !search.mismatch(offset, length, string, false, root, pool);
     }
 
@@ -140,6 +152,9 @@ public class RadixTree {
      * @return true if removed
      */
     public boolean remove(final String string) {
+        if (string == null) {
+            return false;
+        }
         return remove(string.getBytes());
     }
 
@@ -149,6 +164,9 @@ public class RadixTree {
      * @return true if removed
      */
     public boolean remove(final byte[] string) {
+        if (string == null) {
+            return false;
+        }
         return remove(0, string.length, string);
     }
 

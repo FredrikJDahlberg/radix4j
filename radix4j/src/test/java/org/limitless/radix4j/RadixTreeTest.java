@@ -9,6 +9,54 @@ import static org.limitless.radix4j.Node.Header;
 public class RadixTreeTest {
 
     @Test
+    public void errorChecks() {
+        final var tree = RadixTree.allocate(128);
+        assertFalse(tree.add((String) null));
+        assertFalse(tree.add((byte[]) null));
+        assertFalse(tree.add(0, -1, "test".getBytes()));
+        assertFalse(tree.add(-1, 0, "test".getBytes()));
+        assertFalse(tree.add(0, 0, "test".getBytes()));
+        assertFalse(tree.add(2, 3, "test".getBytes()));
+        assertFalse(tree.add(0, 10, null));
+
+        assertFalse(tree.contains((String) null));
+        assertFalse(tree.contains((byte[]) null));
+        assertFalse(tree.contains(0, -1, "test".getBytes()));
+        assertFalse(tree.contains(-1, 0, "test".getBytes()));
+        assertFalse(tree.contains(0, 0, "test".getBytes()));
+        assertFalse(tree.contains(2, 3, "test".getBytes()));
+        assertFalse(tree.contains(0, 10, null));
+
+        assertFalse(tree.remove((String) null));
+        assertFalse(tree.remove((byte[]) null));
+        assertFalse(tree.remove(0, -1, "test".getBytes()));
+        assertFalse(tree.remove(-1, 0, "test".getBytes()));
+        assertFalse(tree.remove(0, 0, "test".getBytes()));
+        assertFalse(tree.remove(2, 3, "test".getBytes()));
+        assertFalse(tree.remove(0, 10, null));
+
+        assertThrows(IllegalArgumentException.class, () -> tree.forEach(null));
+        assertThrows(IllegalArgumentException.class, () -> RadixTree.allocate(63));
+        assertThrows(IllegalArgumentException.class, () -> RadixTree.allocate(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1));
+        assertThrows(IllegalArgumentException.class, () -> new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1));
+
+        final var small = new RadixTree(64);
+        assertThrows(IllegalStateException.class, () -> {
+            for (int i = 0; i < 85_000_000; ++i) {
+                small.add("" + i);
+            }
+        });
+    }
+
+    @Test
+    public void closeTree() {
+        final var tree = RadixTree.allocate(128);
+        assertTrue(tree.add("12345"));
+        tree.close();
+        assertThrows(IllegalStateException.class, () -> tree.add("12346"));
+    }
+
+    @Test
     public void reuseSlotOnlyAtLastChar() {
         final var tree = new RadixTree();
         final String prefix = "1234567890-";
@@ -43,6 +91,8 @@ public class RadixTreeTest {
     public void addRemoveContainsBasics() {
         final var tree = new RadixTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
+        assertTrue(tree.remove("cat"));
+        assertFalse(tree.contains("cat"));
     }
 
     @Test
