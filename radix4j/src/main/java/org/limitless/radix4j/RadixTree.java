@@ -621,10 +621,7 @@ public class RadixTree {
                     }
                 }
             }
-            if (mismatch == nodeLength && length == 0) {
-                mismatchType = SUBSTRING;
-            }
-            keyPos = -1;
+            mismatchType = SUBSTRING;
             return true;
         }
 

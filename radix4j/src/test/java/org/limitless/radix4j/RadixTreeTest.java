@@ -99,6 +99,25 @@ public class RadixTreeTest {
     }
 
     @Test
+    public void forEach() {
+        final var tree = new RadixTree();
+        check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
+        int[] count = { 0 };
+        tree.forEach(node -> {
+            byte header = node.header();
+            if (Header.containsString(header)) {
+                ++count[0];
+            }
+            for (int i = 0; i < Header.children(header); ++i) {
+                if (node.containsKey(i)) {
+                    ++count[0];
+                }
+            }
+        });
+        assertEquals(count[0], tree.size());
+    }
+
+    @Test
     public void addRemoveContainsBasics() {
         final var tree = new RadixTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
