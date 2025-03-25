@@ -2,6 +2,8 @@ package org.limitless.radix4j;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.foreign.Arena;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import static org.limitless.radix4j.Node.Header;
@@ -9,8 +11,20 @@ import static org.limitless.radix4j.Node.Header;
 public class RadixTreeTest {
 
     @Test
+    public void splitShortPrefix() {
+        final var tree = new RadixTree();
+        check(tree, false, "cat", "cats", "cabbage");
+    }
+
+    @Test
+    public void splitLongerPrefix() {
+        final var tree = new RadixTree();
+        check(tree, false, "money", "monkey", "montage");
+    }
+
+    @Test
     public void errorChecks() {
-        final var tree = RadixTree.allocate(128);
+        final var tree = RadixTree.allocate(128, Arena.ofShared());
         assertFalse(tree.add((String) null));
         assertFalse(tree.add((byte[]) null));
         assertFalse(tree.add(0, -1, "test".getBytes()));
@@ -27,6 +41,9 @@ public class RadixTreeTest {
         assertFalse(tree.contains(2, 3, "test".getBytes()));
         assertFalse(tree.contains(0, 10, null));
 
+        assertFalse(tree.remove("test"));
+        assertFalse(tree.remove("test".getBytes()));
+        assertFalse(tree.remove(0, 4, "test".getBytes()));
         assertFalse(tree.remove((String) null));
         assertFalse(tree.remove((byte[]) null));
         assertFalse(tree.remove(0, -1, "test".getBytes()));
@@ -36,9 +53,11 @@ public class RadixTreeTest {
         assertFalse(tree.remove(0, 10, null));
 
         assertThrows(IllegalArgumentException.class, () -> tree.forEach(null));
-        assertThrows(IllegalArgumentException.class, () -> RadixTree.allocate(63));
-        assertThrows(IllegalArgumentException.class, () -> RadixTree.allocate(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1));
-        assertThrows(IllegalArgumentException.class, () -> new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1));
+        assertThrows(IllegalArgumentException.class, () -> RadixTree.allocate(63, Arena.ofShared()));
+        assertThrows(IllegalArgumentException.class, () ->
+            RadixTree.allocate(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1, Arena.ofShared()));
+        assertThrows(IllegalArgumentException.class, () ->
+            new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1));
 
         final var small = new RadixTree(64);
         assertThrows(IllegalStateException.class, () -> {
@@ -50,7 +69,7 @@ public class RadixTreeTest {
 
     @Test
     public void closeTree() {
-        final var tree = RadixTree.allocate(128);
+        final var tree = RadixTree.allocate(128, Arena.ofShared());
         assertTrue(tree.add("12345"));
         tree.close();
         assertThrows(IllegalStateException.class, () -> tree.add("12346"));
@@ -80,19 +99,35 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void testForEach() {
-        final var tree = new RadixTree();
-        assertTrue(tree.add("money"));
-        assertTrue(tree.add("monkey"));
-        assertTrue(tree.add("montage"));
-    }
-
-    @Test
     public void addRemoveContainsBasics() {
         final var tree = new RadixTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
         assertTrue(tree.remove("cat"));
         assertFalse(tree.contains("cat"));
+    }
+
+    @Test
+    public void containsPrefixStrings() {
+        final var tree = new RadixTree();
+        check(tree, false, "cat", "cats");
+
+        assertTrue(tree.startsWith(0, 2, "ca".getBytes(), System.out::println));
+        System.out.println();
+
+        assertFalse(tree.startsWith(0, 1, "C".getBytes(), System.out::println));
+    }
+
+    @Test
+    public void containsPrefixKeys() {
+        final var tree = new RadixTree();
+        check(tree, false, "00cat", "00cats", "00cow", "00cabbage", "01crow", "01pig", "01pin", "01cabs");
+        assertTrue(tree.startsWith(0, 2, "00".getBytes(), System.out::println));
+        System.out.println();
+
+        assertTrue(tree.startsWith(0, 2, "01".getBytes(), System.out::println));
+        System.out.println();
+
+        assertFalse(tree.startsWith(0, 2, "99".getBytes(), System.out::println));
     }
 
     @Test
@@ -154,7 +189,6 @@ public class RadixTreeTest {
         assertTrue(tree.add(prefix + "Q"));
         assertTrue(tree.add(prefix + "W"));
         assertTrue(tree.add(prefix + "U"));
-        tree.forEach(System.out::println);
         assertEquals(17, tree.size());
 
         final String[] strings = {
@@ -199,15 +233,6 @@ public class RadixTreeTest {
             assertTrue(tree.remove(prefix + i), prefix + i);
         }
         assertEmpty(tree);
-    }
-
-    @Test
-    public void clearTree() {
-        final var tree = new RadixTree();
-        addContains(tree, "test");
-        tree.clear();
-        assertEquals(0, tree.size());
-        addContains(tree, "test");
     }
 
     @Test
@@ -376,7 +401,7 @@ public class RadixTreeTest {
         addContains(tree, "cats");
         assertEquals(2, tree.size());
         assertTrue(tree.remove("cat"));
-        tree.forEach(System.out::println);
+
         assertTrue(tree.contains("cats"));
         assertEquals(1, tree.size());
         new Checker().check(tree,
@@ -493,11 +518,19 @@ public class RadixTreeTest {
         for (String string : strings) {
             addContains(tree, string);
         }
+
+        assertEquals(strings.length, tree.size(), "size");
         for (String string : strings) {
-            assertFalse(tree.add(string));
-            assertTrue(tree.contains(string));
+            if (tree.add(string)) {
+                tree.forEach(System.out::println);
+                fail("add failed");
+            }
+            if (!tree.contains(string)) {
+                tree.forEach(System.out::println);
+                fail("contains failed");
+            }
             if (remove) {
-                assertTrue(tree.remove(string));
+                assertTrue(tree.remove(string), string);
             }
         }
         if (remove) {

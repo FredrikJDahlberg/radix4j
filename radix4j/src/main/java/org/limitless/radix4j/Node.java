@@ -57,12 +57,12 @@ public class Node extends BlockFlyweight {
         final byte header = (byte) (nodeString & HEADER_MASK);
         final int nodeLength = Header.stringLength(header);
         final int remaining = Math.min(length, nodeLength);
-        nodeString >>>= 8;
+        nodeString >>>= Byte.SIZE;
         for (int i = 0; i < remaining; ++i) {
             if ((nodeString & KEY_MASK) != string[i + offset]) {
                 return i;
             }
-            nodeString >>>= 8;
+            nodeString >>>= Byte.SIZE;
         }
         if (length == nodeLength && Header.containsString(header)) {
             return -1;

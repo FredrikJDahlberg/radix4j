@@ -10,48 +10,53 @@ import static org.limitless.radix4j.Node.*;
 
 public class RadixTree {
 
-    public static final int DEFAULT_BLOCK_COUNT = 256;
+    public static final int DEFAULT_BLOCKS_PER_SEGMENT = 256;
     public static final int MAX_BLOCKS_PER_SEGMENT = Address.MAX_BLOCKS;
 
     private static final int INITIAL_PATH_SIZE = 32;
 
-    private BlockPool<Node> pool;
+    private BlockPool<Node> nodePool;
     private Node root;
     private Node child;
     private Node parent;
     private Search search;
 
     private int size;
-    private int allocatedBlocks;
+    private int allocatedNodes;
 
     private final int blocksPerSegment;
 
     /**
-     * Constructs an empty tree with the default segment size
+     * Constructs an empty tree with the default segment size using a shared arena.
      */
     public RadixTree() {
-        this(DEFAULT_BLOCK_COUNT);
+        this(DEFAULT_BLOCKS_PER_SEGMENT);
     }
 
     /**
-     * Constructs an empty tree with the given segment size
+     * Constructs an empty tree with the given segment size using a shared arena.
      * @param blocksPerSegment segment size
      */
     public RadixTree(final int blocksPerSegment) {
+        this(blocksPerSegment, Arena.ofShared());
+    }
+
+    public RadixTree(final int blocksPerSegment, final Arena arena) {
         if (blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCKS_PER_SEGMENT) {
             throw new IllegalArgumentException("invalid number of blocks per segment");
         }
         this.blocksPerSegment = blocksPerSegment;
-        initiate(blocksPerSegment);
+        initiate(blocksPerSegment, arena);
     }
 
     /**
-     * Allocates an empty tree with the given segment size
+     * Allocates an empty tree with the given segment size with a shared arena.
      * @param blocksPerSegment segment size
+     * @param arena memory arena
      * @return tree
      */
-    public static RadixTree allocate(final int blocksPerSegment) {
-        return new RadixTree(blocksPerSegment);
+    public static RadixTree allocate(final int blocksPerSegment, final Arena arena) {
+        return new RadixTree(blocksPerSegment, arena);
     }
 
     /**
@@ -132,6 +137,49 @@ public class RadixTree {
     }
 
     /**
+     * Find all strings for the given prefix
+     * @param offset prefix offset
+     * @param length prefix length
+     * @param string string
+     * @param consumer node consumer
+     * @return true when prefix is found
+     */
+    protected boolean startsWith(final int offset, final int length, final byte[] string, final Consumer<Node> consumer) {
+        if (isEmpty()) {
+            return false;
+        }
+
+        search.mismatch(offset, length, string, false, root, nodePool);
+        if (search.position == 0) {
+            return false;
+        }
+
+        Node node = search.node;
+        if (search.keyPos != NOT_FOUND) {
+            consumer.accept(node);
+            node.wrap(node.memorySegment(), node.segment(), node.child(search.keyPos));
+        }
+
+        search.path[0] = Path.block(Path.EMPTY, node.offset());
+        search.pathCount = 1;
+        while (search.pathCount >= 1) {
+            final long address = Address.fromOffset(Path.block(search.path[--search.pathCount]));
+            nodePool.get(address, node);
+            consumer.accept(node);
+
+            final int count = Header.children(node.header());
+            for (int i = 0; i < count; ++i) {
+                final int childBlock = node.child(i);
+                if (childBlock != EMPTY_BLOCK) {
+                    search.ensureCapacity();
+                    search.path[search.pathCount++] = Path.block(Path.EMPTY, childBlock);
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
      * Remove string form collection
      * @param string value
      * @return true if removed
@@ -187,19 +235,11 @@ public class RadixTree {
     }
 
     /**
-     * Resets the tree to its initial state.
-     */
-    public void clear() {
-        pool.close();
-        initiate(blocksPerSegment);
-    }
-
-    /**
      * Destroys the backing memory store.
      */
     public void close() {
         size = 0;
-        pool.close();
+        nodePool.close();
     }
 
     /**
@@ -208,7 +248,7 @@ public class RadixTree {
      */
     @Override
     public String toString() {
-        return String.format("RadixTree{ size = %,d, %s}", size, pool);
+        return String.format("RadixTree{ size = %,d, %s}", size, nodePool);
     }
 
     /**
@@ -216,11 +256,11 @@ public class RadixTree {
      * @return block count
      */
     protected int allocatedBlocks() {
-        return allocatedBlocks;
+        return allocatedNodes;
     }
 
     /**
-     * Iterate of the nodes in the collection
+     * Iterates over the nodes in the tree
      * @param consumer node consumer
      */
     protected void forEach(final Consumer<Node> consumer) {
@@ -255,7 +295,7 @@ public class RadixTree {
         final byte key = length >= 1 ? string[offset] : search.key;
 
         if (search.emptyOffset != EMPTY_BLOCK) {
-            pool.get(Address.fromOffset(search.emptyOffset), search.node);
+            nodePool.get(Address.fromOffset(search.emptyOffset), search.node);
         }
         switch (search.mismatchType) {
             case Search.COMMON_PREFIX:
@@ -284,11 +324,11 @@ public class RadixTree {
     }
 
     private boolean containsString(final int offset, final int length, final byte[] string) {
-        return !isEmpty() && !search.mismatch(offset, length, string, false, root, pool);
+        return !isEmpty() && !search.mismatch(offset, length, string, false, root, nodePool);
     }
 
     private boolean removeString(final int offset, final int length, final byte[] string) {
-        if (isEmpty() || search.mismatch(offset, length, string, true, root, pool)) {
+        if (isEmpty() || search.mismatch(offset, length, string, true, root, nodePool)) {
             return false;
         }
         --size;
@@ -309,15 +349,15 @@ public class RadixTree {
         }
         header = node.header();
         if (Header.children(header) == 0 && !Header.containsString(header)) {
-            free(node);
+            freeNode(node);
 
             for (int i = search.pathCount - 2; i >= 0; --i) {
                 final long path = search.path[i];
-                pool.get(Address.fromOffset(Path.block(path)), node);
+                nodePool.get(Address.fromOffset(Path.block(path)), node);
 
                 header = node.header();
                 final int count = Header.children(header);
-                final boolean contains = Header.containsString(header);
+                final boolean hasString = Header.containsString(header);
                 final int position = Path.position(search.path[i + 1]);
                 final boolean containsKey = node.containsKey(position);
                 if (containsKey) {
@@ -325,10 +365,10 @@ public class RadixTree {
                 } else {
                     node.removeChild(position);
                 }
-                if (count >= 2 || contains) {
+                if (count >= 2 || hasString) {
                     break;
                 } else {
-                    free(node);
+                    freeNode(node);
                 }
             }
         }
@@ -336,23 +376,20 @@ public class RadixTree {
     }
 
     private void forEach(final Node node, final Consumer<Node> consumer) {
-        search.path[0] = Path.block(0, node.offset());
+        search.path[0] = Path.block(Path.EMPTY, node.offset());
         search.pathCount = 1;
-
         while (search.pathCount >= 1) {
             final int block = Path.block(search.path[--search.pathCount]);
             final long address = Address.fromOffset(block);
-            pool.get(address, node);
-
+            nodePool.get(address, node);
             consumer.accept(node);
 
-            final byte header = node.header();
-            final int count = Header.children(header);
+            final int count = Header.children(node.header());
             for (int i = 0; i < count; ++i) {
                 final int childBlock = node.child(i);
                 if (childBlock != EMPTY_BLOCK) {
                     search.ensureCapacity();
-                    search.path[search.pathCount++] = Path.block(0, childBlock);
+                    search.path[search.pathCount++] = Path.block(Path.EMPTY, childBlock);
                 }
             }
         }
@@ -384,7 +421,7 @@ public class RadixTree {
 
         }
         if (block == EMPTY_BLOCK) {
-            free(node);
+            freeNode(node);
             node.wrap(parent);
         } else {
             node.removePrefix(1, remainingNode - 1);
@@ -423,7 +460,7 @@ public class RadixTree {
         }
         node
             .header(mismatch, remainingString == 0, 1)
-            .child(0, node.charAt(mismatch), block, remainingNode <= 1 && count == 0);
+            .child(0, node.charAt(mismatch), block, remainingNode <= 1 && count <= 1);
         return addKey(remainingString, key, keyPos, node);
     }
 
@@ -436,8 +473,7 @@ public class RadixTree {
 
     private int addKey(final int remaining, final byte key, final int keyPos, final Node node) {
         final int block = remaining >= 2 ? allocate(parent).offset() : 0;
-        final byte header = node.header();
-        final int count = Header.children(header);
+        final int count = Header.children(node.header());
         final int consumed;
         if (count < BLOCK_COUNT) {
             if (remaining == 0) {
@@ -488,30 +524,30 @@ public class RadixTree {
     }
 
     private Node allocate(final Node node) {
-        ++allocatedBlocks;
-        final int segments = allocatedBlocks / blocksPerSegment;
+        ++allocatedNodes;
+        final int segments = allocatedNodes / blocksPerSegment;
         if (segments >= Address.MAX_SEGMENTS) {
             throw new IllegalStateException("out of segments " + segments);
         }
 
-        pool.allocate(node);
+        nodePool.allocate(node);
         node.header((byte) 0);
         return node;
     }
 
-    private void free(final Node node) {
+    private void freeNode(final Node node) {
         if (root.address() == search.node.address()) {
             root.header(0, false, 0);
         } else {
-            --allocatedBlocks;
-            pool.free(node);
+            --allocatedNodes;
+            nodePool.free(node);
         }
     }
 
-    private void initiate(final int blocksPerSegment) {
+    private void initiate(final int blocksPerSegment, final Arena arena) {
         size = 0;
-        allocatedBlocks = 0;
-        pool = new BlockPool.Builder<>(Arena.ofShared(), Node.class).blocksPerSegment(blocksPerSegment).build();
+        allocatedNodes = 0;
+        nodePool = new BlockPool.Builder<>(arena, Node.class).blocksPerSegment(blocksPerSegment).build();
         parent = allocate(new Node());
         root = allocate(new Node());
         child = allocate(new Node());
@@ -563,11 +599,12 @@ public class RadixTree {
             keyPos = NOT_FOUND;
             position = 0;
             mismatch = 0;
-            pathCount = 1;
             emptyOffset = EMPTY_BLOCK;
             node.wrap(root);
             parent.wrap(root);
-            path[0] = Path.block(0, root.offset());
+            path[0] = Path.block(Path.EMPTY, root.offset());
+            pathCount = 1;
+
             boolean processString = true;
             byte header = node.header();
             int nodeLength = Header.stringLength(header);
@@ -616,11 +653,9 @@ public class RadixTree {
                         pool.get(Address.fromOffset(childBlock), node);
                         header = node.header();
                         nodeLength = Header.stringLength(header);
-                    } else {
-                        if (mismatch < position) {
-                            mismatchType = COMMON_PREFIX_AND_KEY;
-                            return true;
-                        }
+                    } else if (mismatch < position) {
+                        mismatchType = COMMON_PREFIX_AND_KEY;
+                        return true;
                     }
                 }
             }
@@ -650,6 +685,8 @@ public class RadixTree {
         private static final long BLOCK_MASK = -1L >>> (Long.SIZE - BLOCK_LENGTH);
         private static final long KEY_MASK = -1L >>> (Long.SIZE - KEY_LENGTH);
         private static final long POSITION_MASK = -1L >>> (Long.SIZE - POSITION_LENGTH);
+
+        private static final long EMPTY = 0;
 
         public static int position(final long path) {
             return (int) ((path >>> POSITION_OFFSET) & POSITION_MASK);
