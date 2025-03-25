@@ -497,7 +497,7 @@ public class RadixTreeTest {
         counts[0] = 0;
         timestamp = System.currentTimeMillis();
         byte[] bytes = (prefix + 100).getBytes();
-        tree.startsWith(0, 0, bytes,node -> {
+        tree.startsWith(0, 20, bytes,node -> {
             final byte header = node.header();
             if (Header.containsString(header)) {
                 ++counts[0];
