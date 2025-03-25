@@ -148,36 +148,15 @@ public class RadixTree {
         if (isEmpty()) {
             return false;
         }
-
         search.mismatch(offset, length, string, false, root, nodePool);
-        if (search.position == 0) {
-            return false;
-        }
 
-        Node node = search.node;
-        if (search.keyPos != NOT_FOUND) {
-            consumer.accept(node);
-            node.wrap(node.memorySegment(), node.segment(), node.child(search.keyPos));
+        final boolean found = search.position >= 1;
+        if (found) {
+            search.traverse(consumer, nodePool);
         }
-
-        search.path[0] = Path.block(Path.EMPTY, node.offset());
-        search.pathCount = 1;
-        while (search.pathCount >= 1) {
-            final long address = Address.fromOffset(Path.block(search.path[--search.pathCount]));
-            nodePool.get(address, node);
-            consumer.accept(node);
-
-            final int count = Header.children(node.header());
-            for (int i = 0; i < count; ++i) {
-                final int childBlock = node.child(i);
-                if (childBlock != EMPTY_BLOCK) {
-                    search.ensureCapacity();
-                    search.path[search.pathCount++] = Path.block(Path.EMPTY, childBlock);
-                }
-            }
-        }
-        return true;
+        return found;
     }
+
 
     /**
      * Remove string form collection
@@ -664,6 +643,34 @@ public class RadixTree {
             }
             keyPos = -1;
             return true;
+        }
+
+        /**
+         * Traverses the tree starting with the node found by the mismatch method.
+         * @param consumer node consumer
+         * @param pool memory pool
+         */
+        void traverse(Consumer<Node> consumer, BlockPool<Node> pool) {
+            if (keyPos != NOT_FOUND) {
+                consumer.accept(node);
+                node.wrap(node.memorySegment(), node.segment(), node.child(keyPos));
+            }
+
+            path[0] = Path.block(Path.EMPTY, node.offset());
+            pathCount = 1;
+            while (pathCount >= 1) {
+                pool.get(Address.fromOffset(Path.block(path[--pathCount])), node);
+                consumer.accept(node);
+
+                final int count = Header.children(node.header());
+                for (int i = 0; i < count; ++i) {
+                    final int block = node.child(i);
+                    if (block != EMPTY_BLOCK) {
+                        ensureCapacity();
+                        path[pathCount++] = Path.block(Path.EMPTY, block);
+                    }
+                }
+            }
         }
 
         void ensureCapacity() {
