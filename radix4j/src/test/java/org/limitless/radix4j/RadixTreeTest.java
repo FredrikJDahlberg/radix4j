@@ -475,7 +475,7 @@ public class RadixTreeTest {
         for (int i = 1; i <= count; ++i) {
             assertTrue(tree.add(prefix + i));
         }
-        System.out.printf("Add     : %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
+        System.out.printf("Add        : %,10d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
 
         final String string = tree.toString();
         final int[] counts = { 0 };
@@ -492,19 +492,36 @@ public class RadixTreeTest {
                 }
             }
         });
-        System.out.printf("ForEach : %,d strings in %,6d ms\n", counts[0], System.currentTimeMillis() - timestamp);
+        System.out.printf("ForEach    : %,10d strings in %,6d ms\n", counts[0], System.currentTimeMillis() - timestamp);
+
+        counts[0] = 0;
+        timestamp = System.currentTimeMillis();
+        byte[] bytes = (prefix + 100).getBytes();
+        tree.startsWith(0, 0, bytes,node -> {
+            final byte header = node.header();
+            if (Header.containsString(header)) {
+                ++counts[0];
+            }
+            final int keys = Header.children(header);
+            for (int i = 0; i < keys; ++i) {
+                if (node.containsKey(i)) {
+                    ++counts[0];
+                }
+            }
+        });
+        System.out.printf("StartsWith : %,10d strings in %,6d ms\n", counts[0], System.currentTimeMillis() - timestamp);
 
         timestamp = System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
             assertTrue(tree.contains(prefix + i));
         }
-        System.out.printf("Contains: %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
+        System.out.printf("Contains   : %,10d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
 
         timestamp = System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
             assertTrue(tree.remove(prefix + i));
         }
-        System.out.printf("Remove  : %,d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
+        System.out.printf("Remove     : %,10d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
         System.out.println(string);
 
         assertEmpty(tree);

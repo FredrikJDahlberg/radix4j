@@ -137,28 +137,6 @@ public class RadixTree {
     }
 
     /**
-     * Find all strings for the given prefix
-     * @param offset prefix offset
-     * @param length prefix length
-     * @param string string
-     * @param consumer node consumer
-     * @return true when prefix is found
-     */
-    protected boolean startsWith(final int offset, final int length, final byte[] string, final Consumer<Node> consumer) {
-        if (isEmpty()) {
-            return false;
-        }
-        search.mismatch(offset, length, string, false, root, nodePool);
-
-        final boolean found = search.position >= 1;
-        if (found) {
-            search.traverse(consumer, nodePool);
-        }
-        return found;
-    }
-
-
-    /**
      * Remove string form collection
      * @param string value
      * @return true if removed
@@ -241,16 +219,41 @@ public class RadixTree {
     /**
      * Iterates over the nodes in the tree
      * @param consumer node consumer
+     * @throws IllegalArgumentException for null consumers
      */
     protected void forEach(final Consumer<Node> consumer) {
         if (consumer == null) {
             throw new IllegalArgumentException("null consumer");
         }
-        if (root == null) {
-            return;
+        if (!isEmpty()) {
+            search.mismatch(0, 0, null, false, root, nodePool);
+            search.traverse(consumer, nodePool);
         }
-        parent.wrap(root);
-        forEach(parent, consumer);
+    }
+
+    /**
+     * Find all strings for the given prefix
+     * @param offset prefix offset
+     * @param length prefix length
+     * @param string string
+     * @param consumer node consumer
+     * @return true when prefix is found
+     * @throws IllegalArgumentException for null consumers
+     */
+    protected boolean startsWith(final int offset, final int length, final byte[] string, final Consumer<Node> consumer) {
+        if (consumer == null) {
+            throw new IllegalArgumentException("null consumer");
+        }
+        if (isEmpty()) {
+            return false;
+        }
+        search.mismatch(offset, length, string, false, root, nodePool);
+
+        final boolean found = search.position >= 1;
+        if (found) {
+            search.traverse(consumer, nodePool);
+        }
+        return found;
     }
 
     private boolean addString(int offset, int length, final byte[] string) {
@@ -352,26 +355,6 @@ public class RadixTree {
             }
         }
         return true;
-    }
-
-    private void forEach(final Node node, final Consumer<Node> consumer) {
-        search.path[0] = Path.block(Path.EMPTY, node.offset());
-        search.pathCount = 1;
-        while (search.pathCount >= 1) {
-            final int block = Path.block(search.path[--search.pathCount]);
-            final long address = Address.fromOffset(block);
-            nodePool.get(address, node);
-            consumer.accept(node);
-
-            final int count = Header.children(node.header());
-            for (int i = 0; i < count; ++i) {
-                final int childBlock = node.child(i);
-                if (childBlock != EMPTY_BLOCK) {
-                    search.ensureCapacity();
-                    search.path[search.pathCount++] = Path.block(Path.EMPTY, childBlock);
-                }
-            }
-        }
     }
 
     private void addParent(int remainingNode, final byte key, int remainingString, final Search context) {
@@ -653,7 +636,7 @@ public class RadixTree {
         void traverse(Consumer<Node> consumer, BlockPool<Node> pool) {
             if (keyPos != NOT_FOUND) {
                 consumer.accept(node);
-                node.wrap(node.memorySegment(), node.segment(), node.child(keyPos));
+                pool.get(Address.fromOffset(node.child(keyPos)), node);
             }
 
             path[0] = Path.block(Path.EMPTY, node.offset());
