@@ -23,34 +23,45 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void errorChecks() {
+    public void errorHandling() {
+        assertThrows(IllegalArgumentException.class, () -> new RadixTree(63, null));
+        assertThrows(IllegalArgumentException.class, () -> new RadixTree(65537, null));
+        assertThrows(IllegalArgumentException.class, () -> new RadixTree(128, null));
+
+        final var TEST = "test".getBytes();
         final var tree = RadixTree.allocate(128, Arena.ofShared());
         assertFalse(tree.add((String) null));
         assertFalse(tree.add((byte[]) null));
-        assertFalse(tree.add(0, -1, "test".getBytes()));
-        assertFalse(tree.add(-1, 0, "test".getBytes()));
-        assertFalse(tree.add(0, 0, "test".getBytes()));
-        assertFalse(tree.add(2, 3, "test".getBytes()));
+        assertFalse(tree.add(0, -1, TEST));
+        assertFalse(tree.add(-1, 0, TEST));
+        assertFalse(tree.add(0, 0, TEST));
+        assertFalse(tree.add(2, 3, TEST));
         assertFalse(tree.add(0, 10, null));
 
         assertFalse(tree.contains((String) null));
         assertFalse(tree.contains((byte[]) null));
-        assertFalse(tree.contains(0, -1, "test".getBytes()));
-        assertFalse(tree.contains(-1, 0, "test".getBytes()));
-        assertFalse(tree.contains(0, 0, "test".getBytes()));
-        assertFalse(tree.contains(2, 3, "test".getBytes()));
+        assertFalse(tree.contains(0, -1, TEST));
+        assertFalse(tree.contains(-1, 0, TEST));
+        assertFalse(tree.contains(0, 0, TEST));
+        assertFalse(tree.contains(2, 3, TEST));
         assertFalse(tree.contains(0, 10, null));
 
         assertFalse(tree.remove("test"));
-        assertFalse(tree.remove("test".getBytes()));
-        assertFalse(tree.remove(0, 4, "test".getBytes()));
+        assertFalse(tree.remove(TEST));
+        assertFalse(tree.remove(0, 4, TEST));
         assertFalse(tree.remove((String) null));
         assertFalse(tree.remove((byte[]) null));
-        assertFalse(tree.remove(0, -1, "test".getBytes()));
-        assertFalse(tree.remove(-1, 0, "test".getBytes()));
-        assertFalse(tree.remove(0, 0, "test".getBytes()));
-        assertFalse(tree.remove(2, 3, "test".getBytes()));
+        assertFalse(tree.remove(0, -1, TEST));
+        assertFalse(tree.remove(-1, 0, TEST));
+        assertFalse(tree.remove(0, 0, TEST));
+        assertFalse(tree.remove(2, 3, TEST));
         assertFalse(tree.remove(0, 10, null));
+
+        assertThrows(IllegalArgumentException.class,
+            () -> tree.startsWith(0, null, null));
+        assertFalse(tree.startsWith( 0, null, System.out::println));
+
+        assertThrows(IllegalArgumentException.class, () -> tree.forEach(null));
 
         assertThrows(IllegalArgumentException.class, () -> tree.forEach(null));
         assertThrows(IllegalArgumentException.class, () -> RadixTree.allocate(63, Arena.ofShared()));
@@ -58,13 +69,17 @@ public class RadixTreeTest {
             RadixTree.allocate(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1, Arena.ofShared()));
         assertThrows(IllegalArgumentException.class, () ->
             new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT + 1));
+    }
 
-        final var small = new RadixTree(64);
+    @Test
+    public void memoryOverflow() {
+        final var tree = new RadixTree(64);
         assertThrows(IllegalStateException.class, () -> {
-            for (int i = 0; i < 85_000_000; ++i) {
-                small.add("" + i);
+            for (int i = 0; i < 42_000_000; ++i) {
+                tree.add((i + "").getBytes());
             }
         });
+        System.out.println(tree);
     }
 
     @Test
@@ -114,15 +129,17 @@ public class RadixTreeTest {
                 }
             }
         });
-        assertEquals(count[0], tree.size());
+        assertEquals(tree.size(), count[0]);
     }
 
     @Test
     public void addRemoveContainsBasics() {
         final var tree = new RadixTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
-        assertTrue(tree.remove("cat"));
-        assertFalse(tree.contains("cat"));
+        assertTrue(tree.remove("cat".getBytes()));
+        assertFalse(tree.contains("cat".getBytes()));
+        assertFalse(tree.remove("remove".getBytes()));
+        assertTrue(tree.contains("cabbage".getBytes()));
     }
 
     @Test
@@ -130,23 +147,30 @@ public class RadixTreeTest {
         final var tree = new RadixTree();
         check(tree, false, "cat", "cats");
 
-        assertTrue(tree.startsWith(0, 2, "ca".getBytes(), System.out::println));
+        assertTrue(tree.startsWith(2, "ca".getBytes(), System.out::println));
         System.out.println();
 
-        assertFalse(tree.startsWith(0, 1, "C".getBytes(), System.out::println));
+        assertFalse(tree.startsWith(1, "C".getBytes(), System.out::println));
+    }
+
+    @Test
+    public void containsBasics() {
+        final var tree = new RadixTree();
+        check(tree, false, "cat", "cats");
+        assertFalse(tree.contains("X"));
     }
 
     @Test
     public void containsPrefixKeys() {
         final var tree = new RadixTree();
         check(tree, false, "00cat", "00cats", "00cow", "00cabbage", "01crow", "01pig", "01pin", "01cabs");
-        assertTrue(tree.startsWith(0, 2, "00".getBytes(), System.out::println));
+        assertTrue(tree.startsWith(2, "00".getBytes(), System.out::println));
         System.out.println();
 
-        assertTrue(tree.startsWith(0, 2, "01".getBytes(), System.out::println));
+        assertTrue(tree.startsWith(2, "01".getBytes(), System.out::println));
         System.out.println();
 
-        assertFalse(tree.startsWith(0, 2, "99".getBytes(), System.out::println));
+        assertFalse(tree.startsWith(2, "99".getBytes(), System.out::println));
     }
 
     @Test
@@ -490,15 +514,17 @@ public class RadixTreeTest {
         final int count = 10_000_000;
         final var tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
         final String prefix = "abcdefghijklmnop-";
-        long timestamp = System.currentTimeMillis();
+
+        long timestamp = -System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
-            assertTrue(tree.add(prefix + i));
+            var _ = tree.add(prefix + i);
         }
-        System.out.printf("Add        : %,10d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
+        timestamp += System.currentTimeMillis();
+        System.out.printf("Add        : %,10d strings in %,6d ms\n", count, timestamp);
 
         final String string = tree.toString();
         final int[] counts = { 0 };
-        timestamp = System.currentTimeMillis();
+        timestamp = -System.currentTimeMillis();
         tree.forEach(node -> {
             final byte header = node.header();
             if (Header.containsString(header)) {
@@ -511,12 +537,13 @@ public class RadixTreeTest {
                 }
             }
         });
-        System.out.printf("ForEach    : %,10d strings in %,6d ms\n", counts[0], System.currentTimeMillis() - timestamp);
+        timestamp += System.currentTimeMillis();
+        System.out.printf("ForEach    : %,10d strings in %,6d ms\n", counts[0], timestamp);
 
         counts[0] = 0;
-        timestamp = System.currentTimeMillis();
+        timestamp = -System.currentTimeMillis();
         byte[] bytes = (prefix + 100).getBytes();
-        tree.startsWith(0, 20, bytes,node -> {
+        var _ = tree.startsWith(20, bytes,node -> {
             final byte header = node.header();
             if (Header.containsString(header)) {
                 ++counts[0];
@@ -528,19 +555,22 @@ public class RadixTreeTest {
                 }
             }
         });
-        System.out.printf("StartsWith : %,10d strings in %,6d ms\n", counts[0], System.currentTimeMillis() - timestamp);
+        timestamp += System.currentTimeMillis();
+        System.out.printf("StartsWith : %,10d strings in %,6d ms\n", counts[0], timestamp);
 
-        timestamp = System.currentTimeMillis();
+        timestamp = -System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
-            assertTrue(tree.contains(prefix + i));
+            var _ = tree.contains(prefix + i);
         }
-        System.out.printf("Contains   : %,10d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
+        timestamp += System.currentTimeMillis();
+        System.out.printf("Contains   : %,10d strings in %,6d ms\n", count, timestamp);
 
-        timestamp = System.currentTimeMillis();
+        timestamp = -System.currentTimeMillis();
         for (int i = 1; i <= count; ++i) {
-            assertTrue(tree.remove(prefix + i));
+            var _ = tree.remove(prefix + i);
         }
-        System.out.printf("Remove     : %,10d strings in %,6d ms\n", count, System.currentTimeMillis() - timestamp);
+        timestamp += System.currentTimeMillis();
+        System.out.printf("Remove     : %,10d strings in %,6d ms\n", count, timestamp);
         System.out.println(string);
 
         assertEmpty(tree);

@@ -7,9 +7,9 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Thread)
 @Fork(jvmArgs = "-server", value = 1)
 @Warmup(time = 2, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 2, batchSize = 25_000_000)
+@Measurement(iterations = 5, batchSize = 25_000_000)
 @BenchmarkMode(Mode.SingleShotTime)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
+@OutputTimeUnit(TimeUnit.MICROSECONDS)
 public class RadixTreeBenchmark extends BaseBenchmark {
 
     @State(Scope.Benchmark)
@@ -62,11 +62,22 @@ public class RadixTreeBenchmark extends BaseBenchmark {
     }
 
     @Benchmark
-    @Measurement(iterations = 2, batchSize = 1)
+    @Measurement(iterations = 5, batchSize = 1)
     @BenchmarkMode(Mode.SingleShotTime)
     public int radixTreeForEach(final FullTree state) {
         int[] result = {0};
         state.tree.forEach(node -> {
+            ++result[0];
+        });
+        return result[0];
+    }
+
+    @Benchmark
+    @Measurement(iterations = 5, batchSize = 1)
+    @BenchmarkMode(Mode.SingleShotTime)
+    public int radixTreeStartsWith(final FullTree state) {
+        int[] result = {0};
+        state.tree.startsWith(10, STRING, node -> {
             ++result[0];
         });
         return result[0];

@@ -7,6 +7,7 @@ import java.lang.foreign.MemorySegment;
 public class Node extends BlockFlyweight {
 
     protected static final int NOT_FOUND = -1;
+    protected static final int EQUAL = -1;
     protected static final int EMPTY_BLOCK = 0;
     protected static final byte EMPTY_KEY = 0;
 
@@ -65,7 +66,7 @@ public class Node extends BlockFlyweight {
             nodeString >>>= Byte.SIZE;
         }
         if (length == nodeLength && Header.containsString(header)) {
-            return -1;
+            return EQUAL;
         }
         return remaining;
     }

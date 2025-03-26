@@ -5,7 +5,7 @@ public class BaseBenchmark {
     public static final byte[] STRING = "ABCDEFGHI000000000".getBytes();
     public static final int STRING_LENGTH = STRING.length;
 
-    public static final int SIZE = 25_000_000;
+    public static final int SIZE = 25_000_001;
     public static final int MAX = SIZE * STRING_LENGTH;
     public static final byte[] strings = new byte[SIZE * STRING_LENGTH];
 
@@ -31,7 +31,7 @@ public class BaseBenchmark {
 
         void tearDown() {
             if (failed >= 1) {
-                System.out.println("HashSet: success = " + success + " failed = " + failed);
+                System.out.println("success = " + success + " failed = " + failed);
             }
         }
 

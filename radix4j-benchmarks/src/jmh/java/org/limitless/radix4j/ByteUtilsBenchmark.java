@@ -6,9 +6,9 @@ import java.util.concurrent.TimeUnit;
 
 @State(Scope.Thread)
 @Fork(jvmArgs = "-server", value = 5)
-@Warmup(iterations = 5, batchSize = 100_000_000)
-@Measurement(iterations = 5, batchSize = 100_000_000)
-@OutputTimeUnit(TimeUnit.NANOSECONDS)
+@Warmup(iterations = 5, batchSize = 25_000_000)
+@Measurement(iterations = 5, batchSize = 25_000_000)
+@OutputTimeUnit(TimeUnit.MICROSECONDS)
 @BenchmarkMode(Mode.SingleShotTime)
 public class ByteUtilsBenchmark {
 
