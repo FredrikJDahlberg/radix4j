@@ -58,8 +58,8 @@ public class RadixTreeTest {
         assertFalse(tree.remove(0, 10, null));
 
         assertThrows(IllegalArgumentException.class,
-            () -> tree.startsWith(0, null, null));
-        assertFalse(tree.startsWith( 0, null, System.out::println));
+            () -> tree.forEach(0, null, null));
+        assertFalse(tree.forEach( 0, null, System.out::println));
 
         assertThrows(IllegalArgumentException.class, () -> tree.forEach(null));
 
@@ -119,6 +119,7 @@ public class RadixTreeTest {
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
         int[] count = { 0 };
         tree.forEach(node -> {
+            System.out.println(node);
             byte header = node.header();
             if (Header.containsString(header)) {
                 ++count[0];
@@ -133,6 +134,32 @@ public class RadixTreeTest {
     }
 
     @Test
+    public void removePrefix() {
+        final var tree = new RadixTree();
+        System.out.println("ALLOC = " + tree.allocatedBlocks());
+        check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
+        tree.forEach(System.out::println);
+        System.out.println("pi");
+        assertTrue(tree.removePrefix(2, "pi".getBytes()));
+        tree.forEach(System.out::println);
+        assertEquals(6, tree.size());
+
+        System.out.println("cab");
+        assertTrue(tree.removePrefix(3, "cab".getBytes()));
+        tree.forEach(System.out::println);
+        assertEquals(4, tree.size());
+
+        System.out.println("cat");
+        assertTrue(tree.removePrefix(3, "cat".getBytes()));
+        tree.forEach(System.out::println);
+        assertEquals(2, tree.size());
+
+        System.out.println("c");
+        assertTrue(tree.removePrefix(1, "c".getBytes()));
+        assertEmpty(tree);
+    }
+
+    @Test
     public void addRemoveContainsBasics() {
         final var tree = new RadixTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
@@ -143,34 +170,29 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void containsPrefixStrings() {
+    public void forEachPrefixStrings() {
         final var tree = new RadixTree();
         check(tree, false, "cat", "cats");
 
-        assertTrue(tree.startsWith(2, "ca".getBytes(), System.out::println));
+        assertTrue(tree.forEach(2, "ca".getBytes(), System.out::println));
         System.out.println();
 
-        assertFalse(tree.startsWith(1, "C".getBytes(), System.out::println));
+        assertFalse(tree.forEach(1, "C".getBytes(), System.out::println));
     }
 
     @Test
-    public void containsBasics() {
-        final var tree = new RadixTree();
-        check(tree, false, "cat", "cats");
-        assertFalse(tree.contains("X"));
-    }
-
-    @Test
-    public void containsPrefixKeys() {
+    public void forEachPrefixKeys() {
         final var tree = new RadixTree();
         check(tree, false, "00cat", "00cats", "00cow", "00cabbage", "01crow", "01pig", "01pin", "01cabs");
-        assertTrue(tree.startsWith(2, "00".getBytes(), System.out::println));
+        assertTrue(tree.forEach(2, "00".getBytes(), System.out::println));
+        System.out.println();
+        tree.forEach(System.out::println);
         System.out.println();
 
-        assertTrue(tree.startsWith(2, "01".getBytes(), System.out::println));
+        assertTrue(tree.forEach(2, "01".getBytes(), System.out::println));
         System.out.println();
 
-        assertFalse(tree.startsWith(2, "99".getBytes(), System.out::println));
+        assertFalse(tree.forEach(2, "99".getBytes(), System.out::println));
     }
 
     @Test
@@ -178,6 +200,7 @@ public class RadixTreeTest {
         final var tree = new RadixTree();
         check(tree, false, "cabbage", "cabs");
         assertFalse(tree.contains("cabb"));
+        assertFalse(tree.contains("X"));
 
         new Checker().check(tree,
             node -> {
@@ -543,7 +566,7 @@ public class RadixTreeTest {
         counts[0] = 0;
         timestamp = -System.currentTimeMillis();
         byte[] bytes = (prefix + 100).getBytes();
-        var _ = tree.startsWith(20, bytes,node -> {
+        var _ = tree.forEach(20, bytes, node -> {
             final byte header = node.header();
             if (Header.containsString(header)) {
                 ++counts[0];
@@ -606,12 +629,13 @@ public class RadixTreeTest {
     }
 
     private static void assertEmpty(final RadixTree tree) {
-        assertTrue(tree.isEmpty());
-        assertEquals(0, tree.size());
         if (tree.allocatedBlocks() >= 6) {
+            System.out.println(tree);
             tree.forEach(System.out::println);
             fail("tree not empty");
         }
+        assertTrue(tree.isEmpty());
+        assertEquals(0, tree.size());
     }
 
     private static void addContains(final RadixTree tree, final String string) {

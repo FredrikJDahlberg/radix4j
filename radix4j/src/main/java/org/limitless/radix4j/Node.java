@@ -177,6 +177,10 @@ public class Node extends BlockFlyweight {
         nativeByte(CONTAINS_OFFSET + index, contains);
     }
 
+    int containsKeyCount() {
+        return Integer.bitCount(nativeShort(CONTAINS_OFFSET));
+    }
+
     /**
      * Get the block index at the given position
      * @param position index position
