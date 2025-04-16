@@ -177,8 +177,8 @@ public class Node extends BlockFlyweight {
         nativeByte(CONTAINS_OFFSET + index, contains);
     }
 
-    int containsKeyCount() {
-        return Integer.bitCount(nativeShort(CONTAINS_OFFSET));
+    public int containsStringCount() {
+        return Header.containsStringCount(header()) + Integer.bitCount(nativeShort(CONTAINS_OFFSET));
     }
 
     /**
@@ -395,8 +395,12 @@ public class Node extends BlockFlyweight {
         private static final byte INDEX_COUNT_MASK = 0xff >>> (Byte.SIZE - INDEX_COUNT_LENGTH);
         private static final byte STRLEN_MASK = 0xff >>> (Byte.SIZE - STRLEN_LENGTH);
 
+        public static int containsStringCount(final byte header) {
+            return ((header >>> CONTAINS_STRING_OFFSET) & CONTAINS_STRING_MASK);
+        }
+
         public static boolean containsString(final byte header) {
-            return ((header >>> CONTAINS_STRING_OFFSET) & CONTAINS_STRING_MASK) != 0;
+            return containsStringCount(header) != 0;
         }
 
         public static byte containsString(final byte header, final boolean value) {
