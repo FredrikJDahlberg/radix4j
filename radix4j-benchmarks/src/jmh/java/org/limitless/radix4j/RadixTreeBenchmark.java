@@ -66,20 +66,24 @@ public class RadixTreeBenchmark extends BaseBenchmark {
     @BenchmarkMode(Mode.SingleShotTime)
     public int radixTreeForEach(final FullTree state) {
         int[] result = {0};
-        state.tree.forEach(node -> {
-            ++result[0];
-        });
+        state.tree.forEach(node -> ++result[0]);
         return result[0];
     }
 
     @Benchmark
     @Measurement(iterations = 5, batchSize = 1)
     @BenchmarkMode(Mode.SingleShotTime)
-    public int radixTreeStartsWith(final FullTree state) {
+    public int radixTreePrefixForEach(final FullTree state) {
         int[] result = {0};
-        state.tree.startsWith(10, STRING, node -> {
-            ++result[0];
-        });
+        state.tree.forEach(10, STRING, node -> ++result[0]);
         return result[0];
+    }
+
+    @Benchmark
+    @Measurement(iterations = 5, batchSize = 1)
+    @BenchmarkMode(Mode.SingleShotTime)
+    public int radixTreePrefixRemove(final FullTree state) {
+        state.tree.removeStrings(10, STRING);
+        return state.tree.size();
     }
 }
