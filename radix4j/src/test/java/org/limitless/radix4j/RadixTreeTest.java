@@ -581,7 +581,6 @@ public class RadixTreeTest {
         }
     }
 
-    // FIXME remove string creation from time
     @Test
     public void benchmark10M() {
         final int COUNT = 10_000_000;
@@ -594,7 +593,6 @@ public class RadixTreeTest {
         }
 
         long timestamp = -System.currentTimeMillis();
-        //addStrings(prefix, COUNT, tree);
         for (int i = 0; i < COUNT; ++i) {
             assertTrue(tree.add(i * 25, 25, buffer));
         }
@@ -608,11 +606,11 @@ public class RadixTreeTest {
             counts[0] += node.containsStringCount();
         });
         timestamp += System.currentTimeMillis();
+        assertEquals(COUNT, counts[0]);
         System.out.printf("ForEach       : %,10d strings in %,6d ms\n", counts[0], timestamp);
 
         timestamp = -System.currentTimeMillis();
         for (int i = 0; i < COUNT; ++i) {
-            // var _ = tree.contains(i * 25, 25, buffer);
             assertTrue(tree.contains(i * 25, 25, buffer));
         }
         timestamp += System.currentTimeMillis();
@@ -620,7 +618,6 @@ public class RadixTreeTest {
 
         timestamp = -System.currentTimeMillis();
         for (int i = 0; i < COUNT; ++i) {
-            // var _ = tree.remove(prefix + i);
             assertTrue(tree.remove(i * 25, 25, buffer));
         }
         timestamp += System.currentTimeMillis();
@@ -631,13 +628,9 @@ public class RadixTreeTest {
         timestamp = -System.currentTimeMillis();
         byte[] bytes = prefix.getBytes();
         var size = tree.size();
-        // var _ = tree.forEach(bytes.length, bytes, node -> {
-        //     counts[0] += node.containsStringCount();
-        // });
-        tree.forEach(bytes.length, bytes, node -> {
-             counts[0] += node.containsStringCount();
-        });
+        tree.forEach(bytes.length, bytes, node -> counts[0] += node.containsStringCount());
         timestamp += System.currentTimeMillis();
+        assertEquals(COUNT, counts[0]);
         System.out.printf("ForEachPrefix : %,10d strings in %,6d ms\n", counts[0], timestamp);
 
         timestamp = -System.currentTimeMillis();

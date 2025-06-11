@@ -264,11 +264,9 @@ public class RadixTree {
             return;
         }
 
-        final boolean found = search.contains(0, length, prefix, node.wrap(root), nodePool);
-        if (found) {
-            search.forEach(node, nodePool, consumer);
-        }
-   }
+        var _ = search.contains(0, length, prefix, node.wrap(root), nodePool);
+        search.forEach(node, nodePool, consumer);
+    }
 
     /**
      * Remove the subtree matching the prefix
