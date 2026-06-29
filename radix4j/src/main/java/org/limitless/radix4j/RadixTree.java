@@ -378,7 +378,7 @@ public class RadixTree {
                 } else {
                     node.removeChild(keyPos);
                 }
-                freeNode = Header.children(header) <= 1 && !Header.containsString(header);
+                freeNode = Header.children(header) <= 1 && !Header.containsString(header) && !node.containsKey(keyPos);
                 if (freeNode) {
                     freeNode(node);
                 }
@@ -693,6 +693,8 @@ public class RadixTree {
                         pool.get(Address.fromOffset(childOffset), current);
                         header = current.header();
                         nodeLength = Header.stringLength(header);
+                    } else {
+                        return false;
                     }
                 }
             }

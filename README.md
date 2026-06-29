@@ -3,12 +3,22 @@ Compact Radix Tree for Java
 
 _Experimental_
 
+Dependencies
+------------
+
+* [fsmp4j](https://github.com/fredrikjdahlberg/fsmp4j) — off-heap fixed-size memory pool (`org.limitless:fsmp4j:1.0.1`)
+
+`fsmp4j` is published to GitHub Packages. Add the repository and credentials to `~/.gradle/gradle.properties`:
+
+    gpr.user=<github username>
+    gpr.key=<github personal access token with read:packages scope>
+
 Build
 -----
 
 ### Java Build
 
-Build the project with [Gradle](http://gradle.org/) using this [build.gradle](https://github.com/fredrikjdahlberg/fixdec4j/blob/main/build.gradle) file.
+Build the project with [Gradle](http://gradle.org/) using this [build.gradle](https://github.com/fredrikjdahlberg/radix4j/blob/main/build.gradle) file.
 
 You require the following to build radix4j
 

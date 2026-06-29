@@ -575,6 +575,46 @@ public class RadixTreeTest {
             " segments = 1, bytes = 16 384 }}").compareTo(tree.toString()));
     }
 
+    @Test
+    public void removeExtensionPreservesContainsKeyString() {
+        // "12345A" is stored as inline prefix "12345" with key 'A' and containsKey=true.
+        // "12345AB" adds a child node for "B" under that key.
+        // Bug: removing "12345AB" freed the ancestor node (children=1, no containsString),
+        // silently deleting "12345A" from the tree.
+        final var tree = new RadixTree();
+        assertTrue(tree.add("12345A"));
+        assertTrue(tree.add("12345AB"));
+        assertEquals(2, tree.size());
+
+        assertTrue(tree.remove("12345AB"));
+        assertFalse(tree.contains("12345AB"));
+        assertTrue(tree.contains("12345A"));
+        assertEquals(1, tree.size());
+
+        assertTrue(tree.remove("12345A"));
+        assertEmpty(tree);
+    }
+
+    @Test
+    public void containsReturnsFalseForExtensionOfTerminalKey() {
+        // "12345A" is stored with key 'A', containsKey=true, child=EMPTY_BLOCK.
+        // Bug: contains() on a string longer than "12345A" (e.g. "12345AB" after it was
+        // removed, or "12345AA" which was never added) would fall through the key-found
+        // branch with childOffset==EMPTY_BLOCK and loop back into the same node on the
+        // next iteration, producing false positives for any extension ending with 'A'.
+        final var tree = new RadixTree();
+        assertTrue(tree.add("12345A"));
+        assertTrue(tree.add("12345AB"));
+        assertTrue(tree.remove("12345AB"));
+
+        // exact string still found
+        assertTrue(tree.contains("12345A"));
+        // extensions that were never in the tree must return false, not loop or false-positive
+        assertFalse(tree.contains("12345AB"));
+        assertFalse(tree.contains("12345AA"));
+        assertFalse(tree.contains("12345AX"));
+    }
+
     private void addStrings(final String prefix, final int count, final RadixTree tree) {
         for (int i = 1; i <= count; ++i) {
             assertTrue(tree.add(prefix + i));
