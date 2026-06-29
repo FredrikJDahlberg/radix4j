@@ -602,9 +602,7 @@ public class RadixTreeTest {
 
         final int[] counts = { 0 };
         timestamp = -System.currentTimeMillis();
-        tree.forEach(node -> {
-            counts[0] += node.containsStringCount();
-        });
+        tree.forEach(node -> counts[0] += node.containsStringCount());
         timestamp += System.currentTimeMillis();
         assertEquals(COUNT, counts[0]);
         System.out.printf("ForEach       : %,10d strings in %,6d ms\n", counts[0], timestamp);

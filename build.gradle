@@ -4,8 +4,12 @@ allprojects {
     repositories {
         mavenCentral()
         mavenLocal()
-        flatDir {
-            dirs "libs"
+        maven {
+            url = uri("https://maven.pkg.github.com/fredrikjdahlberg/fsmp4j")
+            credentials {
+                username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") ?: project.findProperty("gpr.token") ?: System.getenv("GITHUB_TOKEN")
+            }
         }
     }
 }
