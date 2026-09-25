@@ -5,8 +5,6 @@ Compact Radix Tree for Java
 [![Java](https://img.shields.io/badge/Java-23-blue)](https://openjdk.org/projects/jdk/23/)
 [![License](https://img.shields.io/github/license/FredrikJDahlberg/radix4j)](LICENSE)
 
-_Experimental_
-
 radix4j is a set of byte strings stored in a compressed radix tree (a trie where chains of single-child
 nodes are merged into one node). Nodes live off-heap in fixed-size 64-byte blocks, so a tree
 creates no garbage and places no load on the Java heap no matter how many strings it holds.
