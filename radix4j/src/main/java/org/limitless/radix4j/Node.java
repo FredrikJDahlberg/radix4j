@@ -60,7 +60,7 @@ public class Node extends BlockFlyweight {
         final int remaining = Math.min(length, nodeLength);
         nodeString >>>= Byte.SIZE;
         for (int i = 0; i < remaining; ++i) {
-            if ((nodeString & KEY_MASK) != string[i + offset]) {
+            if ((nodeString & KEY_MASK) != (string[i + offset] & KEY_MASK)) {
                 return i;
             }
             nodeString >>>= Byte.SIZE;
@@ -175,10 +175,6 @@ public class Node extends BlockFlyweight {
             contains &= (byte) ~flag;
         }
         nativeByte(CONTAINS_OFFSET + index, contains);
-    }
-
-    public int containsStringCount() {
-        return Header.containsStringCount(header()) + Integer.bitCount(nativeShort(CONTAINS_OFFSET));
     }
 
     /**
@@ -425,10 +421,6 @@ public class Node extends BlockFlyweight {
 
         public static byte stringLength(final int header, final int length) {
             return (byte) ((header & ~(STRLEN_MASK << STRLEN_OFFSET)) | ((length & STRLEN_MASK) << STRLEN_OFFSET));
-        }
-
-        public static byte clearStringLength(final int header) {
-            return (byte) (header & ~(STRLEN_MASK << STRLEN_OFFSET));
         }
     }
 }

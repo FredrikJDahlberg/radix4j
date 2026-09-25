@@ -26,3 +26,8 @@ java {
         languageVersion = JavaLanguageVersion.of(23)
     }
 }
+
+tasks.named('jar') {
+    from(rootProject.file('LICENSE')) { into 'META-INF' }
+    from(rootProject.file('NOTICE')) { into 'META-INF' }
+}

@@ -75,10 +75,10 @@ public class RadixTree {
     /**
      * Add a string to the tree
      * @param string value
-     * @return true when value is inserted
+     * @return true when value is inserted, false for null or empty strings
      */
     public boolean add(final String string) {
-        if (string == null) {
+        if (string == null || string.isEmpty()) {
             return false;
         }
         final byte[] bytes = string.getBytes();
@@ -88,10 +88,10 @@ public class RadixTree {
     /**
      * Add a string to the tree.
      * @param string value
-     * @return true when value is inserted
+     * @return true when value is inserted, false for null or empty strings
      */
     public boolean add(final byte[] string) {
-        if (string == null) {
+        if (string == null || string.length == 0) {
             return false;
         }
         return addString(0, string.length, string);
@@ -250,48 +250,142 @@ public class RadixTree {
     }
 
     /**
-     * Remove all string matching the prefix
+     * Iterates over the nodes whose strings all start with the prefix. When the prefix ends at a key,
+     * the string equal to the prefix is stored in the key's node and is not visited. An empty prefix
+     * visits the whole tree.
      * @param length prefix length
      * @param prefix prefix
      * @param consumer node consumer
-     * @throws IllegalArgumentException for null consumers
+     * @throws IllegalArgumentException for null consumers or an invalid prefix
      */
     protected void forEach(final int length, final byte[] prefix, final Consumer<Node> consumer) {
         if (consumer == null) {
             throw new IllegalArgumentException("null consumer");
         }
+        if (length < 0 || (length >= 1 && (prefix == null || length > prefix.length))) {
+            throw new IllegalArgumentException("invalid prefix");
+        }
         if (isEmpty()) {
             return;
         }
 
-        var _ = search.contains(0, length, prefix, node.wrap(root), nodePool);
+        node.wrap(root);
+        if (length >= 1) {
+            final int match = search.findPrefix(length, prefix, node, nodePool);
+            if (match == Search.PREFIX_NOT_FOUND) {
+                return;
+            }
+            if (match == Search.PREFIX_KEY) {
+                final int childBlock = node.child(search.keyPos);
+                if (childBlock == EMPTY_BLOCK) {
+                    return;
+                }
+                nodePool.get(Address.fromOffset(childBlock), node);
+            }
+        }
         search.forEach(node, nodePool, consumer);
     }
 
     /**
-     * Remove the subtree matching the prefix
+     * Remove all strings starting with the prefix, including the prefix itself.
      * @param length prefix length
      * @param prefix prefix
-     * @return matched
+     * @return true when at least one string was removed
      */
     protected boolean removeStrings(final int length, final byte[] prefix) {
-        if (isEmpty()) {
+        if (isEmpty() || prefix == null || length <= 0 || length > prefix.length) {
             return false;
         }
 
-        var _ = search.mismatch(0, length, prefix, node.wrap(root), nodePool);
-        if (search.found) {
-             var _ = removeString(0, length, prefix, false);
-         } else {
-             final int treeOffset = search.removeStrings(prefix[length - 1] == search.key, node, nodePool);
-             size -= search.removedStrings;
-             allocatedNodes -= search.removedNodes;
-             if (treeOffset == root.offset()) {
-                 root.clear();
-                 size = 0;
-             }
+        final int match = search.findPrefix(length, prefix, node.wrap(root), nodePool);
+        if (match == Search.PREFIX_NOT_FOUND) {
+            return false;
+        }
+        int level = search.pathCount - 1;
+        if (match == Search.PREFIX_KEY) {
+            // the prefix ends at a key: remove the key's string and subtree
+            final int keyPos = search.keyPos;
+            if (node.containsKey(keyPos)) {
+                node.containsKey(keyPos, false);
+                --size;
+            }
+            final int childBlock = node.child(keyPos);
+            if (childBlock != EMPTY_BLOCK) {
+                freeSubtree(childBlock);
+            }
+            node.removeChild(keyPos);
+            if (!isUnused(node)) {
+                return true;
+            }
+            freeNode(node);
+        } else if (level == 0) {
+            // the prefix ends inside the root string: every string matches
+            final int count = Header.children(node.header());
+            for (int i = 0; i < count; ++i) {
+                final int childBlock = node.child(i);
+                if (childBlock != EMPTY_BLOCK) {
+                    freeSubtree(childBlock);
+                }
+            }
+            node.header(0, false, 0);
+            size = 0;
+            return true;
+        } else {
+            // the prefix ends inside the node string: remove the node and its subtree
+            freeSubtree(node.offset());
+        }
+
+        // detach the freed node from its parent and free ancestors left without strings
+        for (; level >= 1; --level) {
+            final int keyPos = Path.position(search.path[level]);
+            nodePool.get(Address.fromOffset(Path.offset(search.path[level - 1])), node);
+            if (node.containsKey(keyPos)) {
+                node.child(keyPos, EMPTY_BLOCK);
+                return true;
+            }
+            node.removeChild(keyPos);
+            if (!isUnused(node)) {
+                return true;
+            }
+            freeNode(node);
         }
         return true;
+    }
+
+    private static boolean isUnused(final Node node) {
+        final byte header = node.header();
+        return Header.children(header) == 0 && !Header.containsString(header);
+    }
+
+    /**
+     * Free the node at the given block and all of its descendants, updating the string and node counts.
+     * Uses the search path above its current count as a stack.
+     * @param block subtree root
+     */
+    private void freeSubtree(final int block) {
+        final int stop = search.pathCount;
+        search.ensureCapacity();
+        search.pushPath(Path.offset(Path.EMPTY, block));
+        while (search.pathCount > stop) {
+            nodePool.get(Address.fromOffset(Path.offset(search.popPath())), child);
+            final byte header = child.header();
+            if (Header.containsString(header)) {
+                --size;
+            }
+            final int count = Header.children(header);
+            for (int i = 0; i < count; ++i) {
+                if (child.containsKey(i)) {
+                    --size;
+                }
+                final int childBlock = child.child(i);
+                if (childBlock != EMPTY_BLOCK) {
+                    search.ensureCapacity();
+                    search.pushPath(Path.offset(Path.EMPTY, childBlock));
+                }
+            }
+            --allocatedNodes;
+            nodePool.free(child);
+        }
     }
 
     private boolean addString(int position, int length, final byte[] string) {
@@ -318,7 +412,7 @@ public class RadixTree {
         }
         switch (search.mismatchType) {
             case Search.COMMON_PREFIX:
-                consumed = splitNode(remaining, length, key, search.keyPos, search.mismatch, node);
+                consumed = splitNode(remaining, length, key, search.mismatch, node);
                 break;
             case Search.NO_COMMON_PREFIX:
                 addParent(remaining, key, search.keyPos, length, node,
@@ -427,34 +521,33 @@ public class RadixTree {
         }
     }
 
+    /**
+     * Split the current node at the mismatch position. The node keeps the common prefix and gets the
+     * first tail character as its only key. The rest of the tail, the string flag and the children move
+     * to a new node unless the tail is a single character without children. A string ending at the key
+     * is recorded in the key's contains flag, never in a string-less child node.
+     */
     private int splitNode(final int remainingNode,
                           final int remainingString,
                           final byte key,
-                          final int keyPos,
                           final int mismatch,
                           final Node current) {
         final byte header = current.header();
         final int count = Header.children(header);
+        final int tailLength = remainingNode - 1;
         int block = EMPTY_BLOCK;
-        if ((remainingString >= 2 && remainingNode >= 2) || (count >= 1 && key != NOT_FOUND)) {
+        if (tailLength >= 1 || count >= 1) {
             block = allocate(parent).offset();
             parent.copy(current);
-        }
-        if (remainingNode >= 2) {
-            parent.removePrefix(mismatch + 1, remainingNode - 1);
-        } else {
-            if (count == 1) {
-                parent.header(1, true, 0);
-                parent.charAt(0, current.key(0));
-            } else {
-                final byte parentHeader = parent.header();
-                parent.header(Header.clearStringLength(parentHeader));
+            parent.removePrefix(mismatch + 1, tailLength);
+            if (tailLength == 0) {
+                parent.header(Header.containsString(parent.header(), false));
             }
         }
         current
             .header(mismatch, remainingString == 0, 1)
-            .child(0, current.charAt(mismatch), block, remainingNode <= 1 && count <= 1);
-        return addKey(remainingString, key, keyPos, current);
+            .child(0, current.charAt(mismatch), block, tailLength == 0 && Header.containsString(header));
+        return remainingString == 0 ? 0 : addKey(remainingString, key, NOT_FOUND, current);
     }
 
     private void addChild(final byte key, final int keyPos, final Node current) {
@@ -465,31 +558,27 @@ public class RadixTree {
     }
 
     private int addKey(final int remaining, final byte key, final int keyPos, final Node current) {
+        if (remaining == 0) { // the string ends at an existing key
+            current.containsKey(keyPos, true);
+            return 0;
+        }
         final int block = remaining >= 2 ? allocate(parent).offset() : 0;
-        final int consumed;
         if (Header.children(current.header()) < BLOCK_COUNT) {
-            if (remaining == 0) {
-                current.containsKey(keyPos, true);
-                consumed = 0;
-            } else {
-                current.addChild(key, block, remaining == 1);
-                consumed = 1;
-            }
+            current.addChild(key, block, remaining == 1);
         } else {
             final int last = BLOCK_COUNT - 1;
             final int childBlock = allocate(child).offset();
             child
                 .header(0, false, 0)
                 .addChild(current.key(last), current.child(last), current.containsKey(last))
-                .addChild(key, block, true);
+                .addChild(key, block, remaining == 1);
             current.child(last, EMPTY_KEY, childBlock, false);
             current.wrap(child);
-            consumed = 1;
         }
         if (block != EMPTY_BLOCK) {
             current.wrap(parent);
         }
-        return consumed;
+        return 1;
     }
 
     private void addString(final int offset, final int length, final byte[] string, final Node node) {
@@ -544,6 +633,10 @@ public class RadixTree {
         private static final int NO_COMMON_PREFIX = 4;
         private static final int MISSING_KEY = 5;
 
+        private static final int PREFIX_NOT_FOUND = 0;
+        private static final int PREFIX_NODE = 1;
+        private static final int PREFIX_KEY = 2;
+
         int mismatchType;
         int mismatch;
         int position;
@@ -551,9 +644,6 @@ public class RadixTree {
         int keyPos;
         int reuseKeyNodeOffset;
         boolean found;
-
-        int removedStrings;
-        int removedNodes;
 
         final Node parent;
 
@@ -584,7 +674,6 @@ public class RadixTree {
             position = 0;
             mismatch = 0;
             mismatchType = TYPE_NULL;
-            parent.wrap(node);
             pathCount = 0;
             found = false;
             pushPath(Path.offset(Path.EMPTY, node.offset()));
@@ -601,7 +690,17 @@ public class RadixTree {
                     position += mismatch;
                     length -= mismatch;
                     if (nodeLength > mismatch) {
-                        mismatchType = mismatch == 0 ? NO_COMMON_PREFIX : COMMON_PREFIX;
+                        if (mismatch == 0) {
+                            mismatchType = NO_COMMON_PREFIX;
+                            // only a new parent needs the current parent, wrap it from the path
+                            if (pathCount >= 2) {
+                                pool.get(Address.fromOffset(Path.offset(path[pathCount - 2])), parent);
+                            } else {
+                                parent.wrap(node);
+                            }
+                        } else {
+                            mismatchType = COMMON_PREFIX;
+                        }
                         return true;
                     }
                 }
@@ -618,13 +717,13 @@ public class RadixTree {
                         --length;
                         ++position;
                         if (length == 0) {
+                            reuseKeyNodeOffset = EMPTY_BLOCK; // the key exists, update it in place
                             found = node.containsKey(keyPos);
                             return !found;
                         }
                     } else if (length == 1 && count < BLOCK_COUNT) {
                         reuseKeyNodeOffset = node.offset();
                     }
-                    parent.wrap(node);
 
                     final int childBlock = node.child(keyPos);
                     if (childBlock != EMPTY_BLOCK) {
@@ -670,6 +769,9 @@ public class RadixTree {
                     if (matched == EQUAL) {
                         found = true;
                         return true;
+                    }
+                    if (matched < nodeLength && matched < length) {
+                        return false; // diverges inside the node string
                     }
                     position += matched;
                     length -= matched;
@@ -727,73 +829,51 @@ public class RadixTree {
         }
 
         /**
-         * Remove the strings in the subtree starting at node
-         * @param matchedKey the prefix matched a key
-         * @param node       subtree root node
-         * @param pool       memory pool
-         * @return subtree offset
+         * Find where the prefix ends, recording the visited nodes in the path.
+         * @param length prefix length
+         * @param prefix bytes
+         * @param node   start node, left at the node where the prefix ends
+         * @param pool   block pool
+         * @return PREFIX_NODE when the prefix ends inside the node string, PREFIX_KEY when it ends at
+         *         the key at keyPos, PREFIX_NOT_FOUND when no string starts with the prefix
          */
-        int removeStrings(final boolean matchedKey, final Node node, final BlockPool<Node> pool) {
-            removedNodes = 0;
-            removedStrings = 0;
-
-            final int treeOffset = node.offset();
-            int keyPosition = keyPos;
-            int childBlock = node.child(keyPosition);
-            if (matchedKey && childBlock != EMPTY_BLOCK) {
-                parent.wrap(node);
-                pool.get(Address.fromOffset(childBlock), node);
-                pushPath(Path.path(key, keyPosition, childBlock));
-            }
-
-            final int stop = pathCount;
-            while (pathCount >= stop) { // remove subtree
-                pool.get(Address.fromOffset(Path.offset(path[--pathCount])), node);
-                final int children = Header.children(node.header());
-                for (int i = 0; i < children; ++i) {
-                    childBlock = node.child(i);
-                    if (childBlock != EMPTY_BLOCK) {
-                        ensureCapacity();
-                        pushPath(Path.path(node.key(i), i, childBlock));
+        int findPrefix(int length, final byte[] prefix, final Node node, final BlockPool<Node> pool) {
+            keyPos = NOT_FOUND;
+            pathCount = 0;
+            pushPath(Path.offset(Path.EMPTY, node.offset()));
+            int position = 0;
+            while (true) {
+                final byte header = node.header();
+                if (Header.stringLength(header) >= 1) {
+                    final int matched = node.mismatch(position, length, prefix);
+                    if (matched == EQUAL || matched == length) {
+                        return PREFIX_NODE;
+                    }
+                    if (matched < Header.stringLength(header)) {
+                        return PREFIX_NOT_FOUND;
+                    }
+                    position += matched;
+                    length -= matched;
+                }
+                keyPos = node.keyPosition(Header.children(header), prefix[position]);
+                if (keyPos == NOT_FOUND) {
+                    return PREFIX_NOT_FOUND;
+                }
+                final byte nodeKey = node.key(keyPos);
+                if (nodeKey != EMPTY_KEY) {
+                    ++position;
+                    if (--length == 0) {
+                        return PREFIX_KEY;
                     }
                 }
-                ++removedNodes;
-                removedStrings += node.containsStringCount();
-                pool.free(node);
-            }
-
-            // cleanup parent path
-            boolean freeNode = true;
-            for (int i = stop - 2; freeNode && i >= 0; --i) {
-                final long current = path[i];
-                final int offset = Path.offset(current);
-                keyPosition = Path.position(current);
-                pool.get(Address.fromOffset(offset), parent);
-
-                final byte header = parent.header();
-                freeNode = Header.children(header) <= 1 && (offset != EMPTY_BLOCK && !Header.containsString(header) && !parent.containsKey(keyPosition));
-                if (freeNode) {
-                    ++removedNodes;
-                    removedStrings += parent.containsStringCount();
-                    pool.free(parent);
+                final int childBlock = node.child(keyPos);
+                if (childBlock == EMPTY_BLOCK) {
+                    return PREFIX_NOT_FOUND;
                 }
+                ensureCapacity();
+                pushPath(Path.path(nodeKey, keyPos, childBlock));
+                pool.get(Address.fromOffset(childBlock), node);
             }
-
-            if (parent.memorySegment() != null && position != NOT_FOUND)  {
-                byte parentHeader = parent.header();
-                if (parent.containsKey(keyPosition)) {
-                    parent.child(keyPosition, EMPTY_BLOCK);
-                } else {
-                    parent.removeChild(keyPosition);
-                }
-                if (Header.children(parentHeader) == 0 && Header.stringLength(parentHeader) == 0) {
-                    ++removedNodes;
-                    removedStrings += parent.containsStringCount();
-                    pool.free(parent);
-                }
-            }
-
-            return treeOffset;
         }
 
         void pushPath(long value) {
