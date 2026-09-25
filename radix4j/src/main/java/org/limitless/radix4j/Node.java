@@ -47,15 +47,34 @@ public class Node extends BlockFlyweight {
     }
 
     /**
-     * Compare the current node with the string at offset.
+     * Read the header and the inline string with a single access
+     * @return the header in the lowest byte followed by the string bytes
+     * @see #headerOf(long)
+     */
+    public long headerAndString() {
+        return nativeLong(HEADER_OFFSET);
+    }
+
+    /**
+     * Extract the header from {@link #headerAndString()}
+     * @param headerAndString header and string
+     * @return header
+     */
+    public static byte headerOf(final long headerAndString) {
+        return (byte) (headerAndString & HEADER_MASK);
+    }
+
+    /**
+     * Compare a node with the string at offset.
+     * @param headerAndString the node's {@link #headerAndString()}
      * @param offset comparison position
      * @param length remaining string length
      * @param string byte array
      * @return the first mismatch position or -1 when equal
      */
-    public int mismatch(final int offset, final int length, final byte[] string) {
-        long nodeString = nativeLong(HEADER_OFFSET);
-        final byte header = (byte) (nodeString & HEADER_MASK);
+    public static int mismatch(final long headerAndString, final int offset, final int length, final byte[] string) {
+        long nodeString = headerAndString;
+        final byte header = headerOf(nodeString);
         final int nodeLength = Header.stringLength(header);
         final int remaining = Math.min(length, nodeLength);
         nodeString >>>= Byte.SIZE;

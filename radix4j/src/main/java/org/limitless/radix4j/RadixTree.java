@@ -677,11 +677,12 @@ public class RadixTree {
             pathCount = 0;
             found = false;
             pushPath(Path.offset(Path.EMPTY, node.offset()));
-            byte header = node.header();
+            long headerAndString = node.headerAndString();
+            byte header = Node.headerOf(headerAndString);
             int nodeLength = Header.stringLength(header);
             while (length >= 1) {
                 if (nodeLength >= 1) {
-                    mismatch = node.mismatch(position + stringPosition, length, string);
+                    mismatch = Node.mismatch(headerAndString, position + stringPosition, length, string);
                     if (mismatch == EQUAL) {
                         key = EMPTY_KEY;
                         found = true;
@@ -730,7 +731,8 @@ public class RadixTree {
                         ensureCapacity();
                         pushPath(Path.path(key, keyPos, childBlock));
                         pool.get(Address.fromOffset(childBlock), node);
-                        header = node.header();
+                        headerAndString = node.headerAndString();
+                        header = Node.headerOf(headerAndString);
                         nodeLength = Header.stringLength(header);
                     } else {
                         mismatchType = COMMON_PREFIX_AND_KEY;
@@ -761,11 +763,12 @@ public class RadixTree {
             position = 0;
             pathCount = 0;
             found = false;
-            byte header = current.header();
+            long headerAndString = current.headerAndString();
+            byte header = Node.headerOf(headerAndString);
             int nodeLength = Header.stringLength(header);
             while (length >= 1) {
                 if (nodeLength >= 1) {
-                    final int matched = current.mismatch(position + offset, length, string);
+                    final int matched = Node.mismatch(headerAndString, position + offset, length, string);
                     if (matched == EQUAL) {
                         found = true;
                         return true;
@@ -793,7 +796,8 @@ public class RadixTree {
                     final int childOffset = current.child(keyPos);
                     if (childOffset != EMPTY_BLOCK) {
                         pool.get(Address.fromOffset(childOffset), current);
-                        header = current.header();
+                        headerAndString = current.headerAndString();
+                        header = Node.headerOf(headerAndString);
                         nodeLength = Header.stringLength(header);
                     } else {
                         return false;
@@ -843,9 +847,10 @@ public class RadixTree {
             pushPath(Path.offset(Path.EMPTY, node.offset()));
             int position = 0;
             while (true) {
-                final byte header = node.header();
+                final long headerAndString = node.headerAndString();
+                final byte header = Node.headerOf(headerAndString);
                 if (Header.stringLength(header) >= 1) {
-                    final int matched = node.mismatch(position, length, prefix);
+                    final int matched = Node.mismatch(headerAndString, position, length, prefix);
                     if (matched == EQUAL || matched == length) {
                         return PREFIX_NODE;
                     }
