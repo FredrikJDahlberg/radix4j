@@ -6,7 +6,7 @@ _Experimental_
 Dependencies
 ------------
 
-* [fsmp4j](https://github.com/fredrikjdahlberg/fsmp4j) — off-heap fixed-size memory pool (`org.limitless:fsmp4j:1.0.1`)
+* [fsmp4j](https://github.com/fredrikjdahlberg/fsmp4j) — off-heap fixed-size memory pool (`org.limitless:fsmp4j:1.0.5`)
 
 `fsmp4j` is published to GitHub Packages. Add the repository and credentials to `~/.gradle/gradle.properties`:
 

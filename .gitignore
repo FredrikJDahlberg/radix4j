@@ -1,0 +1,18 @@
+# Build output
+/build/
+/*/build/
+/out/
+/*/out/
+
+# Gradle
+/.gradle/
+
+# IDE
+/.idea/
+*.iml
+
+# Local profiling scripts (machine-specific async-profiler paths)
+/radix4j-benchmarks/resources/
+
+# macOS
+.DS_Store

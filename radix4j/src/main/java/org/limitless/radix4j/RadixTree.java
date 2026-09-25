@@ -54,7 +54,7 @@ public class RadixTree {
         this.blocksPerSegment = blocksPerSegment;
         size = 0;
         allocatedNodes = 0;
-        nodePool = new BlockPool.Builder<>(arena, Node.class).blocksPerSegment(blocksPerSegment).build();
+        nodePool = BlockPool.builder(arena, Node::new).blocksPerSegment(blocksPerSegment).build();
         parent = allocate(new Node());
         root = allocate(new Node());
         child = allocate(new Node());
