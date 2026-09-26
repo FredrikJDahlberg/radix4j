@@ -9,10 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +20,3 @@ jobs:
 
       - name: Run tests
         run: ./gradlew test
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

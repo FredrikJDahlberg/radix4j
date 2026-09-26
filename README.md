@@ -2,12 +2,31 @@ Compact Radix Tree for Java
 ===========================
 
 [![CI](https://github.com/FredrikJDahlberg/radix4j/actions/workflows/ci.yml/badge.svg)](https://github.com/FredrikJDahlberg/radix4j/actions/workflows/ci.yml)
+[![JitPack](https://jitpack.io/v/FredrikJDahlberg/radix4j.svg)](https://jitpack.io/#FredrikJDahlberg/radix4j)
 [![Java](https://img.shields.io/badge/Java-23-blue)](https://openjdk.org/projects/jdk/23/)
 [![License](https://img.shields.io/github/license/FredrikJDahlberg/radix4j)](LICENSE)
 
 radix4j is a set of byte strings stored in a compressed radix tree (a trie where chains of single-child
 nodes are merged into one node). Nodes live off-heap in fixed-size 64-byte blocks, so a tree
 creates no garbage and places no load on the Java heap no matter how many strings it holds.
+
+Usage
+-----
+
+### Dependency
+
+radix4j is published through [JitPack](https://jitpack.io/#FredrikJDahlberg/radix4j), built from the git release tags.
+Its dependency [fsmp4j](https://github.com/FredrikJDahlberg/fsmp4j) comes from JitPack as well:
+
+```groovy
+repositories {
+    maven { url = uri('https://jitpack.io') }
+}
+
+dependencies {
+    implementation 'com.github.FredrikJDahlberg:radix4j:<tag>'
+}
+```
 
 Algorithm
 ---------
@@ -132,12 +151,7 @@ argument and the occasional doubling of the path stack in very deep trees.
 Dependencies
 ------------
 
-* [fsmp4j](https://github.com/fredrikjdahlberg/fsmp4j) — off-heap fixed-size memory pool (`org.limitless:fsmp4j:1.0.7`)
-
-`fsmp4j` is published to GitHub Packages. Add the repository and credentials to `~/.gradle/gradle.properties`:
-
-    gpr.user=<github username>
-    gpr.key=<github personal access token with read:packages scope>
+* [fsmp4j](https://github.com/fredrikjdahlberg/fsmp4j) — off-heap fixed-size memory pool (`com.github.FredrikJDahlberg:fsmp4j:v1.0.8`, from JitPack)
 
 Build
 -----
@@ -153,6 +167,12 @@ You require the following to build radix4j
 Full clean and build:
 
     $ ./gradlew
+
+### Release
+
+Set the version, commit, and push a `v<version>` tag; JitPack builds the tag the first time it is requested:
+
+    $ .github/tag-release.sh 1.0.4
 
 Benchmarks
 ----------

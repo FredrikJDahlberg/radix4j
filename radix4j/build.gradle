@@ -1,11 +1,12 @@
 plugins {
     id 'java-library'
+    id 'maven-publish'
 }
 
 version = '1.0.3'
 
 dependencies {
-    api 'org.limitless:fsmp4j:1.0.7'
+    api 'com.github.FredrikJDahlberg:fsmp4j:v1.0.8'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
 }
@@ -25,9 +26,22 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(23)
     }
+    withSourcesJar()
+    withJavadocJar()
 }
 
 tasks.named('jar') {
     from(rootProject.file('LICENSE')) { into 'META-INF' }
     from(rootProject.file('NOTICE')) { into 'META-INF' }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = findProperty('publishGroup') ?: 'org.limitless'
+            artifactId = 'radix4j'
+            version = findProperty('publishVersion') ?: project.version
+            from components.java
+        }
+    }
 }

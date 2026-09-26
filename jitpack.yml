@@ -1,0 +1,7 @@
+# JitPack builds on Java 8 and SDKMAN no longer offers JDK 23, so fetch Temurin 23 directly.
+before_install:
+  - curl -sSL -o /tmp/jdk23.tar.gz https://github.com/adoptium/temurin23-binaries/releases/download/jdk-23.0.2%2B7/OpenJDK23U-jdk_x64_linux_hotspot_23.0.2_7.tar.gz
+  - mkdir -p /tmp/jdk23 && tar -xzf /tmp/jdk23.tar.gz -C /tmp/jdk23 --strip-components=1
+install:
+  - echo "JitPack GROUP=$GROUP ARTIFACT=$ARTIFACT VERSION=$VERSION"
+  - JAVA_HOME=/tmp/jdk23 ./gradlew :radix4j:publishToMavenLocal -x test -PpublishGroup=$GROUP -PpublishVersion=$VERSION
