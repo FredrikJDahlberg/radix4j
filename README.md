@@ -28,6 +28,33 @@ dependencies {
 }
 ```
 
+### Example
+
+```java
+import org.limitless.radix4j.RadixTree;
+
+RadixTree tree = new RadixTree();
+try {
+    tree.add("CUSTOMER-ORDER-2026-000001");          // true
+    tree.add("CUSTOMER-ORDER-2026-000002");          // true
+    tree.add("CUSTOMER-ORDER-2026-000002");          // false, already present
+
+    // add a string from a range of a byte array, without creating a String
+    byte[] buffer = "id=CUSTOMER-ORDER-2026-000003;".getBytes(StandardCharsets.US_ASCII);
+    tree.add(3, 26, buffer);                         // true
+
+    tree.contains("CUSTOMER-ORDER-2026-000003");     // true
+    tree.remove("CUSTOMER-ORDER-2026-000001");       // true
+    tree.contains("CUSTOMER-ORDER-2026-000001");     // false
+    tree.size();                                     // 2
+} finally {
+    tree.close();                                    // frees the off-heap memory
+}
+```
+
+`add`, `contains` and `remove` take a `String`, a `byte[]` or a range of a `byte[]`. A tree is not
+thread-safe, and its memory is released only by `close()`.
+
 Algorithm
 ---------
 
@@ -203,22 +230,21 @@ Two data sets were used:
 * *sequential* — IDs with a shared prefix and a counter, `CUSTOMER-ORDER-2026-000000000000`, `…001`, …
 * *random* — 32 random alphanumeric characters
 
-| Strings    | HashSet&lt;String&gt; (heap)          | RadixTree, sequential (off-heap) | RadixTree, random (off-heap) |
-|-----------:|---------------------------------------:|---------------------------------:|-----------------------------:|
-| 10 M       | 1,058 MB                               | 67 MB                            | 3,237 MB                     |
-| 30 M       | 3,234 MB                               | 203 MB                           | 9,809 MB                     |
-| 60 M       | `OutOfMemoryError` at 38.7 M           | 406 MB                           | not run                      |
-| per string | ~111 bytes                             | ~7 bytes                         | ~340 bytes                   |
+| Strings | HashSet&lt;String&gt; (heap)   | RadixTree, sequential (off-heap) | RadixTree, random (off-heap) |
+|--------:|--------------------------------:|---------------------------------:|-----------------------------:|
+| 10 M    | 1,058 MB · 111 B/string         | 67 MB · 7.2 B/string             | 796 MB · 83 B/string         |
+| 30 M    | 3,234 MB · 113 B/string         | 203 MB · 7.1 B/string            | 2,485 MB · 87 B/string       |
+| 60 M    | `OutOfMemoryError` at 38.7 M    | 406 MB · 7.1 B/string            | 4,692 MB · 82 B/string       |
 
 `HashSet<String>` costs about 111 bytes per string whatever the content: a `String`, its `byte[]`, a
 `HashMap.Node` and a table slot. With a 4 GB heap it fails with `OutOfMemoryError` after
 38.7 million strings. RadixTree keeps its nodes off-heap, so it places no load on the heap or the
 garbage collector, and its cost depends on how much the strings share. The sequential IDs share
 everything but their last few bytes and cost about 7 bytes each, so 60 million fit in 406 MB.
-Random strings share almost nothing beyond their first few bytes. Each one needs about five 64-byte
-nodes of its own, about three times the memory of a `HashSet`. RadixTree is the better choice for
-keys with long common prefixes, such as IDs, paths, symbols and URLs, and the wrong choice for
-random keys such as UUIDs or hashes.
+Random strings share almost nothing beyond their first few bytes, so each one keeps its tail in a
+64-byte leaf of its own, plus a share of the nodes above it: about 85 bytes per string, still less
+than a `HashSet`. RadixTree is at its best with keys that share long prefixes, such as IDs, paths,
+symbols and URLs, but random keys such as UUIDs or hashes also take less memory than in a `HashSet`.
 
 ### Speed
 
@@ -229,15 +255,15 @@ single calls over the full data set. The prefix `ABCDEFGHI0` matches every strin
 
 | Operation                              | RadixTree  | HashSet&lt;String&gt; |
 |----------------------------------------|-----------:|----------------------:|
-| `add`                                  | 154 ns/op  | 53 ns/op              |
-| `contains`                             | 119 ns/op  | 45 ns/op              |
-| `remove`                               | 148 ns/op  | 43 ns/op              |
-| iterate all                            | 67 ms      | 215 ms                |
-| iterate strings with prefix            | 66 ms      | 276 ms                |
-| remove strings with prefix             | 116 ms     | 364 ms                |
+| `add`                                  | 151 ns/op  | 59 ns/op              |
+| `contains`                             | 114 ns/op  | 46 ns/op              |
+| `remove`                               | 151 ns/op  | 40 ns/op              |
+| iterate all                            | 63 ms      | 214 ms                |
+| iterate strings with prefix            | 65 ms      | 275 ms                |
+| remove strings with prefix             | 122 ms     | 352 ms                |
 
 The `HashSet` baseline creates a `String` from the bytes on every call, as a caller holding the bytes
-would have to. Single-string operations are about three times faster in the `HashSet`: a hash
+would have to. Single-string operations are two and a half to four times faster in the `HashSet`: a hash
 lookup usually touches one or two cache lines, while RadixTree visits one node per 6 bytes of
 string. Operations over many strings favor RadixTree: it walks compact nodes instead of scattered
 objects, and prefix operations only visit the matching subtree. RadixTree iteration visits tree
