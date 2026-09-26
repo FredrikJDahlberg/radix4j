@@ -330,17 +330,78 @@ public class RadixTreeTest {
                 assertTrue(node.containsKey(1));
             },
             node -> {
-                assertEquals("a", getString(node));
-                assertFalse(Header.containsString(node.header()));
-                assertEquals(1, Header.children(node.header()));
-                assertEquals('g', node.key(0));
-            },
-            node -> {
-                assertEquals("e", getString(node));
+                assertEquals("age", getString(node));
                 assertTrue(Header.containsString(node.header()));
                 assertEquals(0, Header.children(node.header()));
             }
         );
+    }
+
+    @Test
+    public void addLeaf() {
+        final var tree = new RadixTree();
+        addContains(tree, "abcdefghij");
+        assertFalse(tree.contains("abcdefghi"));
+        assertFalse(tree.contains("abcdefghijk"));
+        assertFalse(tree.contains("abcdefghiX"));
+        new Checker().check(tree,
+            node -> {
+                assertTrue(node.isLeaf());
+                assertEquals(10, node.leafLength());
+                assertEquals("abcdefghij", getLeafString(node));
+            }
+        );
+        assertTrue(tree.remove("abcdefghij"));
+        assertEmpty(tree);
+    }
+
+    @Test
+    public void splitLeaf() {
+        final var tree = new RadixTree();
+        addContains(tree, "abcdefghij");
+        addContains(tree, "abcXYZ123456");
+        new Checker().check(tree,
+            node -> {
+                assertEquals("abc", getString(node));
+                assertFalse(Header.containsString(node.header()));
+                assertEquals(2, Header.children(node.header()));
+                assertEquals('d', node.key(0));
+                assertEquals('X', node.key(1));
+            },
+            node -> assertEquals("YZ123456", getLeafString(node)),
+            node -> assertEquals("efghij", getLeafString(node))
+        );
+    }
+
+    @Test
+    public void splitLeafAtEveryPosition() {
+        final String leaf = "0123456789abcdefghijklmnopqrstuvwxyz";
+        for (int i = 0; i < leaf.length(); ++i) {
+            final String prefix = leaf.substring(0, i);
+            check(new RadixTree(), leaf, prefix + "#");
+            check(new RadixTree(), leaf, prefix + "#tail-longer-than-an-inline-string");
+            if (i >= 1) {
+                check(new RadixTree(), leaf, prefix);
+                check(new RadixTree(), prefix, leaf);
+            }
+            check(new RadixTree(), leaf, leaf + prefix + "#");
+        }
+    }
+
+    @Test
+    public void splitLeafBelowKey() {
+        final String prefix = "1234567890-";
+        check(new RadixTree(), prefix + "A", prefix + "Babcdefghij", prefix + "Babcdefghik", prefix + "Babc");
+    }
+
+    @Test
+    public void addStringLongerThanLeaf() {
+        final String string = "x".repeat(200);
+        for (final int length : new int[] { 62, 63, 64, 67, 68, 69, 124, 125, 131, 200 }) {
+            final var tree = new RadixTree();
+            final String a = string.substring(0, length);
+            check(tree, a, a.substring(0, length - 1) + "y", a.substring(0, length / 2) + "z", a + "w");
+        }
     }
 
     @Test
@@ -841,6 +902,13 @@ public class RadixTreeTest {
         }
         assertEquals(empty, size == 0);
         assertEquals(size + 1, tree.size());
+    }
+
+    private static String getLeafString(final Node node) {
+        assertTrue(node.isLeaf());
+        final byte[] bytes = new byte[node.leafLength()];
+        node.leafString(bytes.length, bytes);
+        return new String(bytes);
     }
 
     private static String getString(Node node) {

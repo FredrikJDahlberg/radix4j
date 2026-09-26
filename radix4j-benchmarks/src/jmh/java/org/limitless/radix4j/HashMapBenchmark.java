@@ -2,9 +2,14 @@ package org.limitless.radix4j;
 
 import org.openjdk.jmh.annotations.*;
 
-import java.util.HashMap;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Baseline for {@link RadixTreeBenchmark}: the same strings in a HashSet&lt;String&gt; (backed by a HashMap).
+ * Every operation creates the String from the byte array, like a caller holding the bytes would.
+ */
 @State(Scope.Thread)
 @Fork(jvmArgs = "-server", value = 1)
 @Warmup(time = 2, timeUnit = TimeUnit.SECONDS)
@@ -13,16 +18,16 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 public class HashMapBenchmark extends BaseBenchmark {
 
+    private static final String PREFIX = new String(STRING, 0, 10, StandardCharsets.ISO_8859_1);
+
     @State(Scope.Benchmark)
     public static class HashMapState extends BaseState {
-        HashMap<Integer,Integer> map;
-        int count;
+        HashSet<String> set;
     }
 
     @Setup(Level.Iteration)
     public void setupHashSet(HashMapState state) {
-        state.map = new HashMap<>(SIZE);
-        state.count = 0;
+        state.set = new HashSet<>(SIZE);
         state.setup();
     }
 
@@ -33,17 +38,15 @@ public class HashMapBenchmark extends BaseBenchmark {
 
     @State(Scope.Benchmark)
     public static class FullHashMapState extends BaseState {
-        HashMap<Integer,Integer> map;
+        HashSet<String> set;
     }
 
     @Setup(Level.Iteration)
     public void setupFullHashMap(final FullHashMapState state) {
-        state.map =  new HashMap<>(SIZE);
+        state.set = new HashSet<>(SIZE);
         state.setup();
         for (int offset = 0; offset < strings.length; offset += STRING_LENGTH) {
-            final int hashCode = ByteUtils.hashCode(1, strings, offset, STRING_LENGTH);
-            final int bucket = offset / STRING_LENGTH / 100;
-            state.map.put(hashCode, bucket);
+            state.set.add(string(offset));
         }
     }
 
@@ -54,42 +57,50 @@ public class HashMapBenchmark extends BaseBenchmark {
 
     @Benchmark
     public boolean hashMapAdd(final HashMapState state) {
-        final int hashCode = ByteUtils.hashCode(1, strings, state.stringOffset, STRING_LENGTH);
-        return state.updateStats(state.map.put(hashCode, ++state.count / 100) == null);
+        return state.updateStats(state.set.add(string(state.stringOffset)));
     }
 
     @Benchmark
     public boolean hashMapContains(final FullHashMapState state) {
-        final int hashCode = ByteUtils.hashCode(1, strings, state.stringOffset, STRING_LENGTH);
-        final boolean result = state.map.containsKey(hashCode);
-        return state.updateStats(result);
+        return state.updateStats(state.set.contains(string(state.stringOffset)));
     }
 
     @Benchmark
     public boolean hashMapRemove(final FullHashMapState state) {
-        final int hashCode = ByteUtils.hashCode(1, strings, state.stringOffset, STRING_LENGTH);
-        final boolean result = state.map.remove(hashCode) != null;
-        return state.updateStats(result);
+        return state.updateStats(state.set.remove(string(state.stringOffset)));
     }
 
     @Benchmark
     @Measurement(iterations = 5, batchSize = 1)
     @BenchmarkMode(Mode.SingleShotTime)
-    public boolean hashMapForEach(final FullHashMapState state) {
-        final long[] sum = { 0 } ;
-        state.map.forEach((key, value) -> sum[0] += value);
-        return sum[0] >= 1;
+    public int hashMapForEach(final FullHashMapState state) {
+        final int[] result = {0};
+        state.set.forEach(_ -> ++result[0]);
+        return result[0];
     }
 
     @Benchmark
     @Measurement(iterations = 5, batchSize = 1)
     @BenchmarkMode(Mode.SingleShotTime)
-    public boolean hashMapStartsWith(final FullHashMapState state) {
-        final long[] sum = { 0 } ;
-        state.map.forEach((key, value) -> {
-            if (value == 10) {
-                sum[0] += value;
-            }});
-        return sum[0] >= 1;
+    public int hashMapPrefixForEach(final FullHashMapState state) {
+        final int[] result = {0};
+        state.set.forEach(string -> {
+            if (string.startsWith(PREFIX)) {
+                ++result[0];
+            }
+        });
+        return result[0];
+    }
+
+    @Benchmark
+    @Measurement(iterations = 5, batchSize = 1)
+    @BenchmarkMode(Mode.SingleShotTime)
+    public int hashMapPrefixRemove(final FullHashMapState state) {
+        state.set.removeIf(string -> string.startsWith(PREFIX));
+        return state.set.size();
+    }
+
+    private static String string(final int offset) {
+        return new String(strings, offset, STRING_LENGTH, StandardCharsets.ISO_8859_1);
     }
 }

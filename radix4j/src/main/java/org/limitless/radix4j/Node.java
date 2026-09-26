@@ -3,6 +3,9 @@ package org.limitless.radix4j;
 import org.limitless.fsmp4j.BlockFlyweight;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.nio.ByteOrder;
 
 public class Node extends BlockFlyweight {
 
@@ -29,8 +32,15 @@ public class Node extends BlockFlyweight {
     protected static final int PAD_LENGTH = 1;
     protected static final int BYTES = PAD_OFFSET + PAD_LENGTH;
 
+    // leaf byte layout: a node without children holding the rest of one string
+    protected static final int LEAF_LENGTH_OFFSET = HEADER_OFFSET + HEADER_LENGTH;
+    protected static final int LEAF_LENGTH_LENGTH = 1;
+    protected static final int LEAF_STRING_OFFSET = LEAF_LENGTH_OFFSET + LEAF_LENGTH_LENGTH;
+    protected static final int LEAF_LENGTH = BYTES - LEAF_STRING_OFFSET;
+
     private static final int KEY_MASK = 0xff;
     private static final int HEADER_MASK = 0xff;
+    private static final VarHandle LONG_VIEW = MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.nativeOrder());
 
     public int offset() {
         return (int) Address.toOffset(segment(), super.block());
@@ -88,6 +98,70 @@ public class Node extends BlockFlyweight {
             return EQUAL;
         }
         return remaining;
+    }
+
+    /**
+     * Check if this node is a leaf
+     * @return true for leaves
+     */
+    public boolean isLeaf() {
+        return Header.isLeaf(header());
+    }
+
+    /**
+     * Turn this node into a leaf holding the string
+     * @param string bytes
+     * @param offset string offset
+     * @param length string length, at most {@link #LEAF_LENGTH}
+     * @return this
+     */
+    public Node leaf(final byte[] string, final int offset, final int length) {
+        header(Header.LEAF);
+        nativeByte(LEAF_LENGTH_OFFSET, (byte) length);
+        nativeByteArray(offset, string, LEAF_STRING_OFFSET, length);
+        return this;
+    }
+
+    /**
+     * Length of the leaf string
+     * @return length
+     */
+    public int leafLength() {
+        return nativeByte(LEAF_LENGTH_OFFSET) & KEY_MASK;
+    }
+
+    /**
+     * Copy the leaf string
+     * @param length string length
+     * @param string destination
+     */
+    public void leafString(final int length, final byte[] string) {
+        nativeByteArray(LEAF_STRING_OFFSET, length, string);
+    }
+
+    /**
+     * Compare the leaf string with the string at offset, eight bytes at a time.
+     * @param offset comparison position
+     * @param length remaining string length
+     * @param string byte array
+     * @return the first mismatch position or -1 when equal
+     */
+    public int leafMismatch(final int offset, final int length, final byte[] string) {
+        final int leafLength = leafLength();
+        final int common = Math.min(length, leafLength);
+        int i = 0;
+        for (; i + Long.BYTES <= common; i += Long.BYTES) {
+            final long difference = nativeLong(LEAF_STRING_OFFSET + i) ^ (long) LONG_VIEW.get(string, offset + i);
+            if (difference != 0) {
+                return i + Long.numberOfTrailingZeros(difference) / Byte.SIZE;
+            }
+        }
+        for (; i < common; ++i) {
+            if (nativeByte(LEAF_STRING_OFFSET + i) != string[offset + i]) {
+                return i;
+            }
+        }
+        return length == leafLength ? EQUAL : common;
     }
 
     /**
@@ -335,6 +409,11 @@ public class Node extends BlockFlyweight {
         byte header = header();
         builder.setLength(0);
         builder.append("{Node").append(segment()).append('#').append(block()).append(", \"");
+        if (Header.isLeaf(header)) {
+            final byte[] bytes = new byte[leafLength()];
+            leafString(bytes.length, bytes);
+            return builder.append(new String(bytes)).append("\". leaf}");
+        }
         final int stringLength = Header.stringLength(header);
         if (stringLength >= 1) {
             final byte[] bytes = new byte[stringLength];
@@ -409,6 +488,14 @@ public class Node extends BlockFlyweight {
         private static final byte CONTAINS_STRING_MASK = 0xff >>> (Byte.SIZE - CONTAINS_STRING_LENGTH);
         private static final byte INDEX_COUNT_MASK = 0xff >>> (Byte.SIZE - INDEX_COUNT_LENGTH);
         private static final byte STRLEN_MASK = 0xff >>> (Byte.SIZE - STRLEN_LENGTH);
+
+        // leaves use a string length that inline strings never reach, contain one string and have no children
+        private static final int LEAF_STRLEN = STRLEN_MASK;
+        public static final byte LEAF = (byte) ((LEAF_STRLEN << STRLEN_OFFSET) | (CONTAINS_STRING_MASK << CONTAINS_STRING_OFFSET));
+
+        public static boolean isLeaf(final int header) {
+            return stringLength(header) == LEAF_STRLEN;
+        }
 
         public static int containsStringCount(final byte header) {
             return ((header >>> CONTAINS_STRING_OFFSET) & CONTAINS_STRING_MASK);

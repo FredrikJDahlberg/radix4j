@@ -20,6 +20,7 @@ public class RadixTree {
     private final Node child;
     private final Node parent;
     private final Search search;
+    private final byte[] leafString = new byte[LEAF_LENGTH];
 
     private final int blocksPerSegment;
     private int size;
@@ -428,6 +429,10 @@ public class RadixTree {
             case Search.COMMON_PREFIX_AND_KEY:
                 addChild(search.key, search.keyPos, node);
                 break;
+            case Search.LEAF:
+                splitLeaf(position, length, string, search.mismatch, node);
+                consumed = length;
+                break;
             default:
                 break;
         }
@@ -550,6 +555,53 @@ public class RadixTree {
         return remainingString == 0 ? 0 : addKey(remainingString, key, NOT_FOUND, current);
     }
 
+    /**
+     * Split a leaf where the string leaves it. The leaf block becomes the node holding the common
+     * prefix, preceded by a chain of nodes when the prefix exceeds the inline string. The rest of the
+     * leaf string and the rest of the new string become keys of that node, followed by their tails.
+     * A string ending where the other continues is recorded in the node string, or in the key above
+     * the node when the node string is empty.
+     */
+    private void splitLeaf(final int position,
+                           final int length,
+                           final byte[] string,
+                           final int mismatch,
+                           final Node current) {
+        final int leafLength = current.leafLength();
+        current.leafString(leafLength, leafString);
+        final boolean stringEnds = mismatch == leafLength || mismatch == length;
+        int offset = 0;
+        while (mismatch - offset > STRING_LENGTH) {
+            final int block = allocate(child).offset();
+            final int keyOffset = offset + STRING_LENGTH;
+            current
+                .header(STRING_LENGTH, false, 1)
+                .string(leafString, offset, STRING_LENGTH);
+            current.child(0, leafString[keyOffset], block, stringEnds && keyOffset + 1 == mismatch);
+            current.wrap(child);
+            offset = keyOffset + 1;
+        }
+        final int prefixLength = mismatch - offset;
+        current
+            .header(prefixLength, stringEnds && prefixLength >= 1, 0)
+            .string(leafString, offset, prefixLength);
+        if (mismatch < leafLength) {
+            addTail(leafString[mismatch], mismatch + 1, leafLength - mismatch - 1, leafString, current);
+        }
+        if (mismatch < length) {
+            addTail(string[position + mismatch], position + mismatch + 1, length - mismatch - 1, string, current);
+        }
+    }
+
+    private void addTail(final byte key, final int offset, final int length, final byte[] string, final Node current) {
+        int block = EMPTY_BLOCK;
+        if (length >= 1) {
+            block = allocate(parent).offset();
+            addString(offset, length, string, parent);
+        }
+        current.addChild(key, block, length == 0);
+    }
+
     private void addChild(final byte key, final int keyPos, final Node current) {
         final int block = allocate(child).offset();
         child.header(0, false, 0);
@@ -585,6 +637,10 @@ public class RadixTree {
         int remaining = length;
         int position = offset;
         while (remaining >= 1) {
+            if (remaining > STRING_LENGTH && remaining <= LEAF_LENGTH) {
+                node.leaf(string, position, remaining);
+                return;
+            }
             final int stringLength = Math.min(STRING_LENGTH, remaining);
             final byte header = node.header();
             node
@@ -632,6 +688,7 @@ public class RadixTree {
         private static final int COMMON_PREFIX_AND_KEY = 3;
         private static final int NO_COMMON_PREFIX = 4;
         private static final int MISSING_KEY = 5;
+        private static final int LEAF = 6;
 
         private static final int PREFIX_NOT_FOUND = 0;
         private static final int PREFIX_NODE = 1;
@@ -681,6 +738,16 @@ public class RadixTree {
             byte header = Node.headerOf(headerAndString);
             int nodeLength = Header.stringLength(header);
             while (length >= 1) {
+                if (Header.isLeaf(header)) {
+                    mismatch = node.leafMismatch(position + stringPosition, length, string);
+                    if (mismatch == EQUAL) {
+                        key = EMPTY_KEY;
+                        found = true;
+                        return false;
+                    }
+                    mismatchType = LEAF;
+                    return true;
+                }
                 if (nodeLength >= 1) {
                     mismatch = Node.mismatch(headerAndString, position + stringPosition, length, string);
                     if (mismatch == EQUAL) {
@@ -767,6 +834,10 @@ public class RadixTree {
             byte header = Node.headerOf(headerAndString);
             int nodeLength = Header.stringLength(header);
             while (length >= 1) {
+                if (Header.isLeaf(header)) {
+                    found = current.leafMismatch(position + offset, length, string) == EQUAL;
+                    return found;
+                }
                 if (nodeLength >= 1) {
                     final int matched = Node.mismatch(headerAndString, position + offset, length, string);
                     if (matched == EQUAL) {
@@ -849,6 +920,10 @@ public class RadixTree {
             while (true) {
                 final long headerAndString = node.headerAndString();
                 final byte header = Node.headerOf(headerAndString);
+                if (Header.isLeaf(header)) {
+                    final int matched = node.leafMismatch(position, length, prefix);
+                    return matched == EQUAL || matched == length ? PREFIX_NODE : PREFIX_NOT_FOUND;
+                }
                 if (Header.stringLength(header) >= 1) {
                     final int matched = Node.mismatch(headerAndString, position, length, prefix);
                     if (matched == EQUAL || matched == length) {

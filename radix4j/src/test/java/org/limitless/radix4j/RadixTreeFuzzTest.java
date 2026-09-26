@@ -89,7 +89,7 @@ public class RadixTreeFuzzTest {
             { 'a', 2 }, { 'a', 3 }, { 'a', 4 }, { 'a', 16 }, { 0x7e, 4 }, { 0xf0, 16 }
         };
         for (final int[] alphabet : alphabets) {
-            for (final int maxLength : new int[] { 4, 8, 14 }) {
+            for (final int maxLength : new int[] { 4, 8, 14, 70 }) {
                 final String name = String.format("first=0x%02x, alphabet=%d, maxLength=%d",
                     alphabet[0], alphabet[1], maxLength);
                 tests.add(DynamicTest.dynamicTest(name,
@@ -259,6 +259,14 @@ public class RadixTreeFuzzTest {
                     throw new AssertionError("node visited twice: " + node);
                 }
                 final byte header = node.header();
+                if (node.isLeaf()) {
+                    final int length = node.leafLength();
+                    if (header != Header.LEAF || length <= Node.STRING_LENGTH || length > Node.LEAF_LENGTH) {
+                        throw new AssertionError("invalid leaf: " + node);
+                    }
+                    ++strings[0];
+                    return;
+                }
                 final int count = Header.children(header);
                 if (count > Node.BLOCK_COUNT || Header.stringLength(header) > Node.STRING_LENGTH) {
                     throw new AssertionError("invalid header: " + node);
