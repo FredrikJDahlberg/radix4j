@@ -12,17 +12,26 @@ public class RadixTree {
 
     public static final int DEFAULT_BLOCKS_PER_SEGMENT = 256;
     public static final int MAX_BLOCKS_PER_SEGMENT = Address.MAX_BLOCKS;
+    public static final int DEFAULT_BUCKET_STRINGS = MAX_BUCKET_STRINGS;
     private static final int INITIAL_PATH_SIZE = 32;
+    private static final int SHARE_CANDIDATES = 2;
 
     private final BlockPool<Node> nodePool;
     private final Node node;
     private final Node root;
     private final Node child;
     private final Node parent;
+    private final Node bucket;
     private final Search search;
-    private final byte[] leafString = new byte[LEAF_LENGTH];
+
+    // tails of a bucket being split, sorted through the order
+    private byte[] tails = new byte[2 * BUCKET_BYTES];
+    private final int[] tailOffsets = new int[MAX_BUCKET_STRINGS + 1];
+    private final int[] tailLengths = new int[MAX_BUCKET_STRINGS + 1];
+    private final int[] order = new int[MAX_BUCKET_STRINGS + 1];
 
     private final int blocksPerSegment;
+    private final int bucketStrings;
     private int size;
     private int allocatedNodes;
 
@@ -49,10 +58,26 @@ public class RadixTree {
      * @throws IllegalArgumentException invalid number of blocks or segments or null arena
      */
     public RadixTree(final int blocksPerSegment, final Arena arena) {
+        this(blocksPerSegment, arena, DEFAULT_BUCKET_STRINGS);
+    }
+
+    /**
+     * Constructs a tree with the given properties. A bucket holds the tails of up to bucketStrings strings; with
+     * one, each bucket is a leaf holding the tail of a single string longer than an inline node string.
+     * @param blocksPerSegment blocks per segment
+     * @param arena memory arena
+     * @param bucketStrings maximum strings per bucket, 1 to {@link Node#MAX_BUCKET_STRINGS}
+     * @throws IllegalArgumentException invalid number of blocks, segments or bucket strings, or null arena
+     */
+    protected RadixTree(final int blocksPerSegment, final Arena arena, final int bucketStrings) {
         if (arena == null || blocksPerSegment < 64 || blocksPerSegment > MAX_BLOCKS_PER_SEGMENT) {
             throw new IllegalArgumentException("invalid number of blocks per segment");
         }
+        if (bucketStrings < 1 || bucketStrings > MAX_BUCKET_STRINGS) {
+            throw new IllegalArgumentException("invalid number of bucket strings");
+        }
         this.blocksPerSegment = blocksPerSegment;
+        this.bucketStrings = bucketStrings;
         size = 0;
         allocatedNodes = 0;
         nodePool = BlockPool.builder(arena, Node::new).blocksPerSegment(blocksPerSegment).build();
@@ -60,6 +85,7 @@ public class RadixTree {
         root = allocate(new Node());
         child = allocate(new Node());
         node = allocate(new Node());
+        bucket = new Node();
         search = new Search(allocate(new Node()));
     }
 
@@ -252,8 +278,9 @@ public class RadixTree {
 
     /**
      * Iterates over the nodes whose strings all start with the prefix. When the prefix ends at a key,
-     * the string equal to the prefix is stored in the key's node and is not visited. An empty prefix
-     * visits the whole tree.
+     * the string equal to the prefix is stored in the key's node and is not visited. When it ends inside
+     * a bucket, the bucket is visited and may also hold strings not starting with the prefix. An empty
+     * prefix visits the whole tree.
      * @param length prefix length
      * @param prefix prefix
      * @param consumer node consumer
@@ -303,7 +330,18 @@ public class RadixTree {
             return false;
         }
         int level = search.pathCount - 1;
-        if (match == Search.PREFIX_KEY) {
+        if (match == Search.PREFIX_BUCKET) {
+            // the prefix ends inside a bucket: remove its matching tails
+            size -= node.bucketRemove(search.bucketOffset, length - search.bucketOffset, prefix);
+            if (node.isHybrid()) {
+                removeKey(prefix[search.bucketOffset], level);
+                return true;
+            }
+            if (node.bucketLength() >= 1) {
+                return true;
+            }
+            freeNode(node);
+        } else if (match == Search.PREFIX_KEY) {
             // the prefix ends at a key: remove the key's string and subtree
             final int keyPos = search.keyPos;
             if (node.containsKey(keyPos)) {
@@ -312,7 +350,15 @@ public class RadixTree {
             }
             final int childBlock = node.child(keyPos);
             if (childBlock != EMPTY_BLOCK) {
-                freeSubtree(childBlock);
+                nodePool.get(Address.fromOffset(childBlock), bucket);
+                if (bucket.isHybrid()) {
+                    size -= bucket.bucketRemove(node.key(keyPos));
+                    if (bucket.bucketLength() == 0) {
+                        freeNode(bucket);
+                    }
+                } else {
+                    freeSubtree(childBlock);
+                }
             }
             node.removeChild(keyPos);
             if (!isUnused(node)) {
@@ -324,7 +370,7 @@ public class RadixTree {
             final int count = Header.children(node.header());
             for (int i = 0; i < count; ++i) {
                 final int childBlock = node.child(i);
-                if (childBlock != EMPTY_BLOCK) {
+                if (childBlock != EMPTY_BLOCK && !node.sharesChild(i)) {
                     freeSubtree(childBlock);
                 }
             }
@@ -336,21 +382,45 @@ public class RadixTree {
             freeSubtree(node.offset());
         }
 
-        // detach the freed node from its parent and free ancestors left without strings
+        detach(level);
+        return true;
+    }
+
+    /**
+     * Detach the block at the level of the search path from its parent key and free the ancestors left
+     * without strings.
+     * @param level path level
+     */
+    private void detach(int level) {
         for (; level >= 1; --level) {
             final int keyPos = Path.position(search.path[level]);
             nodePool.get(Address.fromOffset(Path.offset(search.path[level - 1])), node);
             if (node.containsKey(keyPos)) {
                 node.child(keyPos, EMPTY_BLOCK);
-                return true;
+                return;
             }
             node.removeChild(keyPos);
             if (!isUnused(node)) {
-                return true;
+                return;
             }
             freeNode(node);
         }
-        return true;
+    }
+
+    /**
+     * After removing tails from the hybrid bucket in node at the level of the search path, detach the key
+     * from the bucket when none of its tails are left, and free the bucket when it is empty.
+     * @param key key of the removed tails
+     * @param level path level of the bucket
+     */
+    private void removeKey(final byte key, final int level) {
+        if (node.bucketHas(key)) {
+            return;
+        }
+        if (node.bucketLength() == 0) {
+            freeNode(node);
+        }
+        detach(level);
     }
 
     private static boolean isUnused(final Node node) {
@@ -370,7 +440,9 @@ public class RadixTree {
         while (search.pathCount > stop) {
             nodePool.get(Address.fromOffset(Path.offset(search.popPath())), child);
             final byte header = child.header();
-            if (Header.containsString(header)) {
+            if (Header.isBucket(header)) {
+                size -= child.bucketCount();
+            } else if (Header.containsString(header)) {
                 --size;
             }
             final int count = Header.children(header);
@@ -379,7 +451,7 @@ public class RadixTree {
                     --size;
                 }
                 final int childBlock = child.child(i);
-                if (childBlock != EMPTY_BLOCK) {
+                if (childBlock != EMPTY_BLOCK && !child.sharesChild(i)) {
                     search.ensureCapacity();
                     search.pushPath(Path.offset(Path.EMPTY, childBlock));
                 }
@@ -424,13 +496,21 @@ public class RadixTree {
                 node.header(Header.containsString(header, true));
                 break;
             case Search.MISSING_KEY:
-                consumed = addKey(length, key, search.keyPos, node);
+                if (search.keyPos == NOT_FOUND && length >= 2 && shareBucket(position, length, string, node)) {
+                    consumed = length;
+                } else {
+                    consumed = addKey(length, key, search.keyPos, node);
+                }
                 break;
             case Search.COMMON_PREFIX_AND_KEY:
                 addChild(search.key, search.keyPos, node);
                 break;
-            case Search.LEAF:
-                splitLeaf(position, length, string, search.mismatch, node);
+            case Search.BUCKET:
+                if (node.isHybrid()) {
+                    addHybridTail(position - 1, length + 1, string, node);
+                } else {
+                    addTail(position, length, string, node);
+                }
                 consumed = length;
                 break;
             default:
@@ -454,7 +534,18 @@ public class RadixTree {
         --size;
 
         byte header = node.header();
-        if (search.key == EMPTY_KEY) {
+        if (Header.isHybrid(header)) {
+            final byte key = node.tailByte(search.bucketEntry, 0);
+            node.bucketRemove(search.bucketEntry);
+            removeKey(key, search.pathCount - 1);
+            return true;
+        } else if (Header.isBucket(header)) {
+            node.bucketRemove(search.bucketEntry);
+            if (node.bucketLength() >= 1) {
+                return true;
+            }
+            node.header(0, false, 0);
+        } else if (search.keyPos == NOT_FOUND) {
             node.header(Header.containsString(header, false));
         } else {
             node.containsKey(search.keyPos, false);
@@ -556,50 +647,345 @@ public class RadixTree {
     }
 
     /**
-     * Split a leaf where the string leaves it. The leaf block becomes the node holding the common
-     * prefix, preceded by a chain of nodes when the prefix exceeds the inline string. The rest of the
-     * leaf string and the rest of the new string become keys of that node, followed by their tails.
-     * A string ending where the other continues is recorded in the node string, or in the key above
-     * the node when the node string is empty.
+     * Add the tail of a string to the bucket it reached. When the bucket is full, its tails and the new one are
+     * sorted and the bucket block becomes the root of a subtree holding them, see {@link #build}.
      */
-    private void splitLeaf(final int position,
-                           final int length,
-                           final byte[] string,
-                           final int mismatch,
-                           final Node current) {
-        final int leafLength = current.leafLength();
-        current.leafString(leafLength, leafString);
-        final boolean stringEnds = mismatch == leafLength || mismatch == length;
-        int offset = 0;
-        while (mismatch - offset > STRING_LENGTH) {
-            final int block = allocate(child).offset();
-            final int keyOffset = offset + STRING_LENGTH;
-            current
-                .header(STRING_LENGTH, false, 1)
-                .string(leafString, offset, STRING_LENGTH);
-            current.child(0, leafString[keyOffset], block, stringEnds && keyOffset + 1 == mismatch);
-            current.wrap(child);
-            offset = keyOffset + 1;
+    private void addTail(final int position, final int length, final byte[] string, final Node current) {
+        if (length <= TAIL_LENGTH && current.bucketFits(length) && -1 - search.bucketEntry < bucketStrings) {
+            current.bucketAdd(string, position, length);
+            return;
         }
-        final int prefixLength = mismatch - offset;
-        current
-            .header(prefixLength, stringEnds && prefixLength >= 1, 0)
-            .string(leafString, offset, prefixLength);
-        if (mismatch < leafLength) {
-            addTail(leafString[mismatch], mismatch + 1, leafLength - mismatch - 1, leafString, current);
+        build(current.offset(), 0, sortTails(position, length, string, current), 0);
+    }
+
+    /**
+     * Add a tail starting with its key to a hybrid bucket. When the bucket is full, its tails and the new one
+     * are sorted and shared out among the keys again, see {@link #split}.
+     */
+    private void addHybridTail(final int position, final int length, final byte[] string, final Node current) {
+        if (length <= TAIL_LENGTH && current.bucketFits(length) && -1 - search.bucketEntry < bucketStrings) {
+            current.bucketAdd(string, position, length);
+            return;
         }
-        if (mismatch < length) {
-            addTail(string[position + mismatch], position + mismatch + 1, length - mismatch - 1, string, current);
+        final int count = sortTails(position, length, string, current);
+        nodePool.get(Address.fromOffset(Path.offset(search.path[search.pathCount - 2])), parent);
+        split(current.offset(), count);
+    }
+
+    /**
+     * Copy the tails of the bucket and the new one to the tail buffer, sorted through the order
+     * @return number of tails
+     */
+    private int sortTails(final int position, final int length, final byte[] string, final Node current) {
+        final int used = current.bucketLength();
+        if (tails.length < used + length) {
+            tails = Arrays.copyOf(tails, used + length);
+        }
+        int count = 0;
+        for (int entry = 0; entry < used; entry += 1 + current.tailLength(entry)) {
+            tailOffsets[count] = entry;
+            tailLengths[count] = current.tailLength(entry);
+            current.tail(entry, tails, entry);
+            ++count;
+        }
+        tailOffsets[count] = used;
+        tailLengths[count] = length;
+        System.arraycopy(string, position, tails, used, length);
+        ++count;
+        for (int i = 0; i < count; ++i) {
+            int j = i;
+            for (; j >= 1 && compareTails(order[j - 1], i) > 0; --j) {
+                order[j] = order[j - 1];
+            }
+            order[j] = i;
+        }
+        return count;
+    }
+
+    /**
+     * Share out the sorted tails of a full hybrid bucket, which start with their key, among the keys of the
+     * parent node: groups of keys whose tails fit together get a hybrid bucket, the first reusing the block,
+     * the tails of a single key a bucket or subtree of their own.
+     */
+    private void split(final int block, final int count) {
+        int target = block;
+        for (int i = 0; i < count; ) {
+            final int next = groupEnd(i, count, 0);
+            final int end = packEnd(i, next, count, 0, NOT_FOUND);
+            if (target == EMPTY_BLOCK) {
+                target = allocate(child).offset();
+            }
+            if (end > next) {
+                writeBucket(target, i, end, 0, true);
+            } else {
+                build(target, i, next, 1);
+            }
+            final int keys = Header.children(parent.header());
+            for (int group = i; group < end; group = groupEnd(group, count, 0)) {
+                parent.child(parent.keyPosition(keys, (byte) tailByte(order[group], 0)), target);
+            }
+            target = EMPTY_BLOCK;
+            i = end;
         }
     }
 
-    private void addTail(final byte key, final int offset, final int length, final byte[] string, final Node current) {
-        int block = EMPTY_BLOCK;
-        if (length >= 1) {
-            block = allocate(parent).offset();
-            addString(offset, length, string, parent);
+    /**
+     * Add a key to the current node for a string continuing after it, sharing the bucket of the nearest key
+     * with room for the tail, which becomes a hybrid bucket.
+     * @return true when the key was added
+     */
+    private boolean shareBucket(final int position, final int length, final byte[] string, final Node current) {
+        // the tail keeps its key
+        final int count = Header.children(current.header());
+        if (bucketStrings < 2 || count >= BLOCK_COUNT || length > TAIL_LENGTH) {
+            return false;
         }
-        current.addChild(key, block, length == 0);
+        // try the nearest keys first, reading at most SHARE_CANDIDATES buckets
+        final int key = string[position] & 0xff;
+        final int overflow = current.overflow();
+        int tried = 0;
+        int best = NOT_FOUND;
+        for (int attempt = 0; attempt < SHARE_CANDIDATES && best == NOT_FOUND; ++attempt) {
+            int candidate = NOT_FOUND;
+            int candidateDistance = Integer.MAX_VALUE;
+            for (int i = 0; i < count; ++i) {
+                final int distance = Math.abs((current.key(i) & 0xff) - key);
+                if (i != overflow && (tried & 1 << i) == 0 && current.child(i) != EMPTY_BLOCK
+                    && distance < candidateDistance) {
+                    candidate = i;
+                    candidateDistance = distance;
+                }
+            }
+            if (candidate == NOT_FOUND) {
+                return false;
+            }
+            tried |= 1 << candidate;
+            nodePool.get(Address.fromOffset(current.child(candidate)), bucket);
+            final byte header = bucket.header();
+            if (Header.isBucket(header)) {
+                final int strings = bucket.bucketCount();
+                final int used = bucket.bucketLength() + (Header.isHybrid(header) ? 0 : strings);
+                if (strings < bucketStrings && used + 1 + length <= BUCKET_BYTES) {
+                    best = candidate;
+                }
+            }
+        }
+        if (best == NOT_FOUND) {
+            return false;
+        }
+        final int block = current.child(best);
+        nodePool.get(Address.fromOffset(block), bucket);
+        if (!bucket.isHybrid()) {
+            // prefix the tails with their key
+            final int used = bucket.bucketLength();
+            final byte bestKey = current.key(best);
+            int offset = 0;
+            for (int entry = 0; entry < used; entry += 1 + bucket.tailLength(entry)) {
+                tails[offset] = (byte) (bucket.tailLength(entry) + 1);
+                tails[offset + 1] = bestKey;
+                bucket.tail(entry, tails, offset + 2);
+                offset += 2 + bucket.tailLength(entry);
+            }
+            bucket.hybrid();
+            for (int entry = 0; entry < offset; entry += 1 + tails[entry]) {
+                bucket.bucketAdd(tails, entry + 1, tails[entry]);
+            }
+        }
+        bucket.bucketAdd(string, position, length);
+        current.addChild(string[position], block, false);
+        return true;
+    }
+
+    /**
+     * Give the key at the position, which shares a hybrid bucket with other keys, a bucket of its own
+     */
+    private void unshare(final Node current, final int position) {
+        final byte key = current.key(position);
+        nodePool.get(Address.fromOffset(current.child(position)), bucket);
+        // copy the key's tails as their length without the key, the key and the rest
+        final int used = bucket.bucketLength();
+        int offset = 0;
+        for (int entry = 0; entry < used; entry += 1 + bucket.tailLength(entry)) {
+            if (bucket.tailByte(entry, 0) == key) {
+                final int length = bucket.tailLength(entry);
+                tails[offset] = (byte) (length - 1);
+                bucket.tail(entry, tails, offset + 1);
+                offset += 1 + length;
+            }
+        }
+        bucket.bucketRemove(key);
+        allocate(bucket).bucket(tails, 2, tails[0]);
+        for (int entry = 2 + tails[0]; entry < offset; entry += 2 + tails[entry]) {
+            bucket.bucketAdd(tails, entry + 2, tails[entry]);
+        }
+        current.child(position, bucket.offset());
+    }
+
+    private int compareTails(final int a, final int b) {
+        return Arrays.compareUnsigned(tails, tailOffsets[a], tailOffsets[a] + tailLengths[a],
+            tails, tailOffsets[b], tailOffsets[b] + tailLengths[b]);
+    }
+
+    private int tailByte(final int tail, final int position) {
+        return tails[tailOffsets[tail] + position];
+    }
+
+    /**
+     * Write the sorted tails from..to, longer than depth and sharing their first depth bytes, from depth on to
+     * the block: a bucket when they fit, otherwise a node holding their common prefix, up to an inline string,
+     * with a key for each next byte. A tail ending at the node string or at a key is recorded in its contains
+     * flag, the rest of the tails below a key are written to a new block. Keys beyond a full node go to an
+     * overflow node.
+     */
+    private void build(final int block, final int from, final int to, final int depth) {
+        if (fitsBucket(from, to, depth)) {
+            writeBucket(block, from, to, depth, false);
+            return;
+        }
+        nodePool.get(Address.fromOffset(block), bucket);
+        final int first = order[from];
+        final int last = order[to - 1];
+        final int common = Math.min(tailLengths[first], tailLengths[last]) - depth;
+        int prefix = 0;
+        while (prefix < STRING_LENGTH && prefix < common && tailByte(first, depth + prefix) == tailByte(last, depth + prefix)) {
+            ++prefix;
+        }
+        final boolean containsString = tailLengths[first] == depth + prefix;
+        bucket
+            .header(prefix, containsString, 0)
+            .string(tails, tailOffsets[first] + depth, prefix);
+        final int position = depth + prefix;
+        int nodeBlock = block;
+        int i = containsString ? from + 1 : from;
+        while (i < to) {
+            final byte key = (byte) tailByte(order[i], position);
+            final int next = groupEnd(i, to, position);
+            nodePool.get(Address.fromOffset(nodeBlock), bucket);
+            int keys = Header.children(bucket.header());
+            if (keys == BLOCK_COUNT - 1 && next < to) {
+                final int overflowBlock = allocate(child).offset();
+                child.header(0, false, 0);
+                bucket.addChild(EMPTY_KEY, overflowBlock, false);
+                bucket.overflow(BLOCK_COUNT - 1);
+                bucket.wrap(child);
+                nodeBlock = overflowBlock;
+                keys = 0;
+            }
+            final int end = packEnd(i, next, to, position, keys);
+            if (end > next) {
+                // keys whose tails fit together share a hybrid bucket
+                final int hybridBlock = allocate(child).offset();
+                for (int group = i; group < end; group = groupEnd(group, to, position)) {
+                    bucket.addChild((byte) tailByte(order[group], position), hybridBlock,
+                        tailLengths[order[group]] == position + 1);
+                }
+                writeBucket(hybridBlock, i, end, position, true);
+                i = end;
+                continue;
+            }
+            final boolean containsKey = tailLengths[order[i]] == position + 1;
+            final int rest = containsKey ? i + 1 : i;
+            if (rest < next) {
+                final int childBlock = allocate(child).offset();
+                bucket.addChild(key, childBlock, containsKey);
+                build(childBlock, rest, next, position + 1);
+            } else {
+                bucket.addChild(key, EMPTY_BLOCK, true);
+            }
+            i = next;
+        }
+    }
+
+    private int groupEnd(final int from, final int to, final int position) {
+        final int key = tailByte(order[from], position);
+        int next = from + 1;
+        while (next < to && tailByte(order[next], position) == key) {
+            ++next;
+        }
+        return next;
+    }
+
+    /**
+     * End of the groups of tails from the group from..next on, grouped by their byte at the position, that fit
+     * in a hybrid bucket: tails continuing after their key, at most bucketStrings of them in its bytes. Every
+     * group must have such tails, and their keys must fit in the node holding keys, without taking the last
+     * slot when more groups follow, unless keys is {@link Node#NOT_FOUND} for existing keys.
+     * @return end of the last group that fits, next when it is the only one
+     */
+    private int packEnd(final int from, final int next, final int to, final int position, final int keys) {
+        if (bucketStrings < 2) {
+            return next;
+        }
+        int strings = 0;
+        int bytes = 0;
+        for (int i = from; i < next; ++i) {
+            final int length = tailLengths[order[i]] - position;
+            if (length >= 2) {
+                ++strings;
+                bytes += 1 + length;
+            }
+        }
+        if (strings == 0 || strings > bucketStrings || bytes > BUCKET_BYTES) {
+            return next;
+        }
+        int end = next;
+        int groups = 1;
+        while (end < to) {
+            final int groupEnd = groupEnd(end, to, position);
+            int groupStrings = 0;
+            for (int i = end; i < groupEnd; ++i) {
+                final int length = tailLengths[order[i]] - position;
+                if (length >= 2) {
+                    ++groupStrings;
+                    bytes += 1 + length;
+                }
+            }
+            strings += groupStrings;
+            if (groupStrings == 0 || strings > bucketStrings || bytes > BUCKET_BYTES
+                || (keys != NOT_FOUND && keys + groups + 1 > (groupEnd < to ? BLOCK_COUNT - 1 : BLOCK_COUNT))) {
+                break;
+            }
+            ++groups;
+            end = groupEnd;
+        }
+        return end;
+    }
+
+    /**
+     * Write the sorted tails from..to from the position on to the block as a bucket, or as a hybrid bucket
+     * keeping their key, where tails ending at their key are left out
+     */
+    private void writeBucket(final int block, final int from, final int to, final int position, final boolean hybrid) {
+        nodePool.get(Address.fromOffset(block), bucket);
+        if (hybrid) {
+            bucket.hybrid();
+        } else {
+            bucket.header(Header.BUCKET);
+            bucket.bucketClear();
+        }
+        for (int i = from; i < to; ++i) {
+            final int tail = order[i];
+            final int length = tailLengths[tail] - position;
+            if (length >= (hybrid ? 2 : 1)) {
+                bucket.bucketAdd(tails, tailOffsets[tail] + position, length);
+            }
+        }
+    }
+
+    private boolean fitsBucket(final int from, final int to, final int depth) {
+        final int count = to - from;
+        if (count > bucketStrings) {
+            return false;
+        }
+        if (count == 1) {
+            final int length = tailLengths[order[from]] - depth;
+            return length <= TAIL_LENGTH && (bucketStrings >= 2 || length > STRING_LENGTH);
+        }
+        int bytes = 0;
+        for (int i = from; i < to; ++i) {
+            bytes += 1 + tailLengths[order[i]] - depth;
+        }
+        return bytes <= BUCKET_BYTES;
     }
 
     private void addChild(final byte key, final int keyPos, final Node current) {
@@ -619,12 +1005,16 @@ public class RadixTree {
             current.addChild(key, block, remaining == 1);
         } else {
             final int last = BLOCK_COUNT - 1;
+            if (current.sharesChild(last)) {
+                unshare(current, last);
+            }
             final int childBlock = allocate(child).offset();
             child
                 .header(0, false, 0)
                 .addChild(current.key(last), current.child(last), current.containsKey(last))
                 .addChild(key, block, remaining == 1);
             current.child(last, EMPTY_KEY, childBlock, false);
+            current.overflow(last);
             current.wrap(child);
         }
         if (block != EMPTY_BLOCK) {
@@ -637,8 +1027,8 @@ public class RadixTree {
         int remaining = length;
         int position = offset;
         while (remaining >= 1) {
-            if (remaining > STRING_LENGTH && remaining <= LEAF_LENGTH) {
-                node.leaf(string, position, remaining);
+            if (remaining <= TAIL_LENGTH && (bucketStrings >= 2 || remaining > STRING_LENGTH)) {
+                node.bucket(string, position, remaining);
                 return;
             }
             final int stringLength = Math.min(STRING_LENGTH, remaining);
@@ -669,6 +1059,7 @@ public class RadixTree {
 
         nodePool.allocate(node);
         node.header((byte) 0);
+        node.overflow(NOT_FOUND);
         return node;
     }
 
@@ -688,11 +1079,12 @@ public class RadixTree {
         private static final int COMMON_PREFIX_AND_KEY = 3;
         private static final int NO_COMMON_PREFIX = 4;
         private static final int MISSING_KEY = 5;
-        private static final int LEAF = 6;
+        private static final int BUCKET = 6;
 
         private static final int PREFIX_NOT_FOUND = 0;
         private static final int PREFIX_NODE = 1;
         private static final int PREFIX_KEY = 2;
+        private static final int PREFIX_BUCKET = 3;
 
         int mismatchType;
         int mismatch;
@@ -700,6 +1092,8 @@ public class RadixTree {
         byte key;
         int keyPos;
         int reuseKeyNodeOffset;
+        int bucketEntry;
+        int bucketOffset;
         boolean found;
 
         final Node parent;
@@ -738,20 +1132,25 @@ public class RadixTree {
             byte header = Node.headerOf(headerAndString);
             int nodeLength = Header.stringLength(header);
             while (length >= 1) {
-                if (Header.isLeaf(header)) {
-                    mismatch = node.leafMismatch(position + stringPosition, length, string);
-                    if (mismatch == EQUAL) {
+                if (Header.isBucket(header)) {
+                    // the tails of a hybrid bucket start with the key
+                    final int keyLength = Header.isHybrid(header) ? 1 : 0;
+                    bucketEntry = node.bucketFind(position + stringPosition - keyLength, length + keyLength, string);
+                    keyPos = NOT_FOUND;
+                    reuseKeyNodeOffset = EMPTY_BLOCK;
+                    if (bucketEntry >= 0) {
                         key = EMPTY_KEY;
                         found = true;
                         return false;
                     }
-                    mismatchType = LEAF;
+                    mismatchType = BUCKET;
                     return true;
                 }
                 if (nodeLength >= 1) {
                     mismatch = Node.mismatch(headerAndString, position + stringPosition, length, string);
                     if (mismatch == EQUAL) {
                         key = EMPTY_KEY;
+                        keyPos = NOT_FOUND;
                         found = true;
                         return false;
                     }
@@ -781,7 +1180,7 @@ public class RadixTree {
                     }
                     path[pathCount-1] |= Path.position(path[pathCount-1], keyPos);
                     key = node.key(keyPos);
-                    if (key != EMPTY_KEY) {  // empty keys do not advance the input string
+                    if (!node.isOverflow(keyPos)) {  // overflow keys do not advance the input string
                         --length;
                         ++position;
                         if (length == 0) {
@@ -834,8 +1233,9 @@ public class RadixTree {
             byte header = Node.headerOf(headerAndString);
             int nodeLength = Header.stringLength(header);
             while (length >= 1) {
-                if (Header.isLeaf(header)) {
-                    found = current.leafMismatch(position + offset, length, string) == EQUAL;
+                if (Header.isBucket(header)) {
+                    final int keyLength = Header.isHybrid(header) ? 1 : 0;
+                    found = current.bucketFind(position + offset - keyLength, length + keyLength, string) >= 0;
                     return found;
                 }
                 if (nodeLength >= 1) {
@@ -856,7 +1256,7 @@ public class RadixTree {
                         return false;
                     }
                     key = current.key(keyPos);
-                    if (key != EMPTY_KEY) {
+                    if (!current.isOverflow(keyPos)) {
                         ++position;
                         --length;
                         if (length == 0) {
@@ -895,7 +1295,7 @@ public class RadixTree {
                 final int children = Header.children(node.header());
                 for (int i = 0; i < children; ++i) {
                     final int childBlock = node.child(i);
-                    if (childBlock != EMPTY_BLOCK) {
+                    if (childBlock != EMPTY_BLOCK && !node.sharesChild(i)) {
                         ensureCapacity();
                         pushPath(Path.offset(Path.EMPTY, childBlock));
                     }
@@ -910,7 +1310,8 @@ public class RadixTree {
          * @param node   start node, left at the node where the prefix ends
          * @param pool   block pool
          * @return PREFIX_NODE when the prefix ends inside the node string, PREFIX_KEY when it ends at
-         *         the key at keyPos, PREFIX_NOT_FOUND when no string starts with the prefix
+         *         the key at keyPos, PREFIX_BUCKET when it ends inside tails of the bucket, which continue
+         *         the prefix from bucketOffset, PREFIX_NOT_FOUND when no string starts with the prefix
          */
         int findPrefix(int length, final byte[] prefix, final Node node, final BlockPool<Node> pool) {
             keyPos = NOT_FOUND;
@@ -920,9 +1321,10 @@ public class RadixTree {
             while (true) {
                 final long headerAndString = node.headerAndString();
                 final byte header = Node.headerOf(headerAndString);
-                if (Header.isLeaf(header)) {
-                    final int matched = node.leafMismatch(position, length, prefix);
-                    return matched == EQUAL || matched == length ? PREFIX_NODE : PREFIX_NOT_FOUND;
+                if (Header.isBucket(header)) {
+                    final int keyLength = Header.isHybrid(header) ? 1 : 0;
+                    bucketOffset = position - keyLength;
+                    return node.bucketStartsWith(bucketOffset, length + keyLength, prefix) ? PREFIX_BUCKET : PREFIX_NOT_FOUND;
                 }
                 if (Header.stringLength(header) >= 1) {
                     final int matched = Node.mismatch(headerAndString, position, length, prefix);
@@ -940,7 +1342,7 @@ public class RadixTree {
                     return PREFIX_NOT_FOUND;
                 }
                 final byte nodeKey = node.key(keyPos);
-                if (nodeKey != EMPTY_KEY) {
+                if (!node.isOverflow(keyPos)) {
                     ++position;
                     if (--length == 0) {
                         return PREFIX_KEY;

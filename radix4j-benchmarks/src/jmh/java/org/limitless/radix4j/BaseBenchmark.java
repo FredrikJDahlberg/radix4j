@@ -1,32 +1,70 @@
 package org.limitless.radix4j;
 
+import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Param;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.State;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
+@State(Scope.Thread)
 public class BaseBenchmark {
 
-    public static final byte[] STRING = "ABCDEFGHI000000000".getBytes();
-    public static final int STRING_LENGTH = STRING.length;
+    public static final int SIZE = 25_000_000;
 
-    public static final int SIZE = 25_000_001;
-    public static final int MAX = SIZE * STRING_LENGTH;
-    public static final byte[] strings = new byte[SIZE * STRING_LENGTH];
+    @Param({"sequential", "random", "order", "sparse", "session", "base36", "base64"})
+    public String dataSet;
 
-    public BaseBenchmark() {
+    /** Strings stored back to back; string i is at offsets[i] with length offsets[i + 1] - offsets[i]. */
+    static byte[] strings;
+    static int[] offsets;
+
+    /** Longest prefix shared by all strings, or the first byte of the first string when there is none. */
+    static byte[] prefix;
+    static String prefixString;
+
+    @Setup(Level.Trial)
+    public void generateStrings() {
+        final DataSet.Generator generator = DataSet.of(dataSet).generator();
+        final byte[] string = new byte[DataSet.MAX_LENGTH];
+        final byte[] buffer = new byte[SIZE * DataSet.MAX_LENGTH];
+        offsets = new int[SIZE + 1];
         int offset = 0;
         for (int i = 0; i < SIZE; ++i) {
-            System.arraycopy(STRING, 0, strings, offset, STRING_LENGTH);
-            offset += STRING_LENGTH;
-            ByteUtils.intToChars(i, offset, strings);
+            final int length = generator.next(string);
+            System.arraycopy(string, 0, buffer, offset, length);
+            offsets[i] = offset;
+            offset += length;
         }
+        offsets[SIZE] = offset;
+        strings = Arrays.copyOf(buffer, offset);
+
+        int prefixLength = length(0);
+        for (int i = 1; i < SIZE && prefixLength > 1; ++i) {
+            final int mismatch = Arrays.mismatch(strings, 0, prefixLength, strings, offsets[i], offsets[i + 1]);
+            if (mismatch >= 0) {
+                prefixLength = Math.min(prefixLength, mismatch);
+            }
+        }
+        prefix = Arrays.copyOf(strings, Math.max(prefixLength, 1));
+        prefixString = new String(prefix, StandardCharsets.ISO_8859_1);
+    }
+
+    static int length(final int index) {
+        return offsets[index + 1] - offsets[index];
     }
 
     public static class BaseState {
         int success;
         int failed;
-        int stringOffset;
+        int index;
 
         void setup() {
             success = 0;
             failed = 0;
-            stringOffset = 0;
+            index = 0;
         }
 
         void tearDown() {
@@ -35,8 +73,16 @@ public class BaseBenchmark {
             }
         }
 
+        int position() {
+            return offsets[index];
+        }
+
+        int length() {
+            return offsets[index + 1] - offsets[index];
+        }
+
         boolean updateStats(final boolean result) {
-            stringOffset = (stringOffset + STRING_LENGTH) % MAX;
+            index = index + 1 == SIZE ? 0 : index + 1;
             if (result) {
                 ++success;
             } else {

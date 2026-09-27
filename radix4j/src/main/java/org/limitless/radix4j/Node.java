@@ -3,6 +3,7 @@ package org.limitless.radix4j;
 import org.limitless.fsmp4j.BlockFlyweight;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
@@ -28,19 +29,23 @@ public class Node extends BlockFlyweight {
     protected static final int BLOCK_LENGTH = BLOCK_COUNT * Integer.BYTES;
     protected static final int KEYS_OFFSET = BLOCK_OFFSET + BLOCK_LENGTH;
     protected static final int KEYS_LENGTH = BLOCK_COUNT * KEY_LENGTH;
-    protected static final int PAD_OFFSET = KEYS_OFFSET + KEYS_LENGTH;
-    protected static final int PAD_LENGTH = 1;
-    protected static final int BYTES = PAD_OFFSET + PAD_LENGTH;
+    protected static final int OVERFLOW_OFFSET = KEYS_OFFSET + KEYS_LENGTH;  // overflow position + 1, 0 for none
+    protected static final int OVERFLOW_LENGTH = 1;
+    protected static final int BYTES = OVERFLOW_OFFSET + OVERFLOW_LENGTH;
 
-    // leaf byte layout: a node without children holding the rest of one string
-    protected static final int LEAF_LENGTH_OFFSET = HEADER_OFFSET + HEADER_LENGTH;
-    protected static final int LEAF_LENGTH_LENGTH = 1;
-    protected static final int LEAF_STRING_OFFSET = LEAF_LENGTH_OFFSET + LEAF_LENGTH_LENGTH;
-    protected static final int LEAF_LENGTH = BYTES - LEAF_STRING_OFFSET;
+    // bucket byte layout: a node without children holding the rest of one or more strings,
+    // each a length byte followed by the tail
+    protected static final int BUCKET_LENGTH_OFFSET = HEADER_OFFSET + HEADER_LENGTH;
+    protected static final int BUCKET_LENGTH_LENGTH = 1;
+    protected static final int BUCKET_OFFSET = BUCKET_LENGTH_OFFSET + BUCKET_LENGTH_LENGTH;
+    protected static final int BUCKET_BYTES = BYTES - BUCKET_OFFSET;
+    protected static final int TAIL_LENGTH = BUCKET_BYTES - 1;
+    protected static final int MAX_BUCKET_STRINGS = BUCKET_BYTES / 2;
 
     private static final int KEY_MASK = 0xff;
     private static final int HEADER_MASK = 0xff;
     private static final VarHandle LONG_VIEW = MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.nativeOrder());
+    private static final boolean LITTLE_ENDIAN = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
 
     public int offset() {
         return (int) Address.toOffset(segment(), super.block());
@@ -101,67 +106,293 @@ public class Node extends BlockFlyweight {
     }
 
     /**
-     * Check if this node is a leaf
-     * @return true for leaves
+     * Check if this node is a bucket
+     * @return true for buckets
      */
-    public boolean isLeaf() {
-        return Header.isLeaf(header());
+    public boolean isBucket() {
+        return Header.isBucket(header());
     }
 
     /**
-     * Turn this node into a leaf holding the string
-     * @param string bytes
-     * @param offset string offset
-     * @param length string length, at most {@link #LEAF_LENGTH}
+     * Check if this node is a hybrid bucket, shared by keys of one node, whose tails start with their key
+     * @return true for hybrid buckets
+     */
+    public boolean isHybrid() {
+        return Header.isHybrid(header());
+    }
+
+    /**
+     * Turn this node into an empty hybrid bucket
      * @return this
      */
-    public Node leaf(final byte[] string, final int offset, final int length) {
-        header(Header.LEAF);
-        nativeByte(LEAF_LENGTH_OFFSET, (byte) length);
-        nativeByteArray(offset, string, LEAF_STRING_OFFSET, length);
+    public Node hybrid() {
+        header(Header.HYBRID);
+        nativeByte(BUCKET_LENGTH_OFFSET, (byte) 0);
         return this;
     }
 
     /**
-     * Length of the leaf string
+     * Check if a tail starts with the byte
+     * @param first first byte
+     * @return true when found
+     */
+    public boolean bucketHas(final byte first) {
+        final int used = bucketLength();
+        for (int entry = 0; entry < used; entry += 1 + tailLength(entry)) {
+            if (nativeByte(BUCKET_OFFSET + entry + 1) == first) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Byte of the tail at the entry
+     * @param entry entry offset
+     * @param position tail position
+     * @return byte
+     */
+    public byte tailByte(final int entry, final int position) {
+        return nativeByte(BUCKET_OFFSET + entry + 1 + position);
+    }
+
+    /**
+     * Remove the tails starting with the byte
+     * @param first first byte
+     * @return number of tails removed
+     */
+    public int bucketRemove(final byte first) {
+        int removed = 0;
+        for (int entry = 0; entry < bucketLength(); ) {
+            if (tailByte(entry, 0) == first) {
+                bucketRemove(entry);
+                ++removed;
+            } else {
+                entry += 1 + tailLength(entry);
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Check if an earlier key has the same child, a hybrid bucket
+     * @param position key position
+     * @return true when the child is shared with an earlier key
+     */
+    public boolean sharesChild(final int position) {
+        final int block = child(position);
+        if (block != EMPTY_BLOCK) {
+            for (int i = 0; i < position; ++i) {
+                if (child(i) == block) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Turn this node into a bucket holding one tail
+     * @param string bytes
+     * @param offset tail offset
+     * @param length tail length, 1 to {@link #TAIL_LENGTH}
+     * @return this
+     */
+    public Node bucket(final byte[] string, final int offset, final int length) {
+        header(Header.BUCKET);
+        nativeByte(BUCKET_LENGTH_OFFSET, (byte) 0);
+        bucketAdd(string, offset, length);
+        return this;
+    }
+
+    /**
+     * Remove all tails from the bucket
+     */
+    public void bucketClear() {
+        nativeByte(BUCKET_LENGTH_OFFSET, (byte) 0);
+    }
+
+    /**
+     * Bytes used by the bucket tails, including their length bytes
      * @return length
      */
-    public int leafLength() {
-        return nativeByte(LEAF_LENGTH_OFFSET) & KEY_MASK;
+    public int bucketLength() {
+        return nativeByte(BUCKET_LENGTH_OFFSET) & KEY_MASK;
     }
 
     /**
-     * Copy the leaf string
-     * @param length string length
+     * Number of tails in the bucket
+     * @return count
+     */
+    public int bucketCount() {
+        final int used = bucketLength();
+        int count = 0;
+        for (int entry = 0; entry < used; entry += 1 + tailLength(entry)) {
+            ++count;
+        }
+        return count;
+    }
+
+    /**
+     * Check if a tail fits in the bucket
+     * @param length tail length
+     * @return true when it fits
+     */
+    public boolean bucketFits(final int length) {
+        return bucketLength() + 1 + length <= BUCKET_BYTES;
+    }
+
+    /**
+     * Append a tail to the bucket, which must fit
+     * @param string bytes
+     * @param offset tail offset
+     * @param length tail length
+     */
+    public void bucketAdd(final byte[] string, final int offset, final int length) {
+        final int used = bucketLength();
+        nativeByte(BUCKET_OFFSET + used, (byte) length);
+        nativeByteArray(offset, string, BUCKET_OFFSET + used + 1, length);
+        nativeByte(BUCKET_LENGTH_OFFSET, (byte) (used + 1 + length));
+    }
+
+    /**
+     * Length of the tail at the entry
+     * @param entry entry offset
+     * @return tail length
+     */
+    public int tailLength(final int entry) {
+        return nativeByte(BUCKET_OFFSET + entry) & KEY_MASK;
+    }
+
+    /**
+     * Copy the tail at the entry
+     * @param entry entry offset
      * @param string destination
+     * @param offset destination offset
      */
-    public void leafString(final int length, final byte[] string) {
-        nativeByteArray(LEAF_STRING_OFFSET, length, string);
+    public void tail(final int entry, final byte[] string, final int offset) {
+        nativeByteArray(BUCKET_OFFSET + entry + 1, tailLength(entry), offset, string);
     }
 
     /**
-     * Compare the leaf string with the string at offset, eight bytes at a time.
-     * @param offset comparison position
-     * @param length remaining string length
-     * @param string byte array
-     * @return the first mismatch position or -1 when equal
+     * Find a tail equal to the string at offset
+     * @param offset string offset
+     * @param length string length
+     * @param string bytes
+     * @return entry offset, or -1 - the number of tails when not found
      */
-    public int leafMismatch(final int offset, final int length, final byte[] string) {
-        final int leafLength = leafLength();
-        final int common = Math.min(length, leafLength);
+    public int bucketFind(final int offset, final int length, final byte[] string) {
+        // compare the length and the first byte of each tail with one read
+        final MemorySegment memory = memorySegment();
+        final long bucket = fieldOffset(BUCKET_OFFSET);
+        final int used = memory.get(ValueLayout.JAVA_BYTE, bucket - 1) & KEY_MASK;
+        final short head = LITTLE_ENDIAN ? (short) (length | string[offset] << Byte.SIZE)
+            : (short) (length << Byte.SIZE | string[offset] & KEY_MASK);
+        int count = 0;
+        for (int entry = 0; entry < used; ++count) {
+            final short value = memory.get(ValueLayout.JAVA_SHORT_UNALIGNED, bucket + entry);
+            if (value == head && tailMismatch(entry, offset, length, string) == length) {
+                return entry;
+            }
+            entry += 1 + (LITTLE_ENDIAN ? value & KEY_MASK : (value >>> Byte.SIZE) & KEY_MASK);
+        }
+        return -1 - count;
+    }
+
+    /**
+     * Check if any tail starts with the prefix at offset
+     * @param offset prefix offset
+     * @param length prefix length
+     * @param prefix bytes
+     * @return true when a tail starts with the prefix
+     */
+    public boolean bucketStartsWith(final int offset, final int length, final byte[] prefix) {
+        final int used = bucketLength();
+        for (int entry = 0; entry < used; entry += 1 + tailLength(entry)) {
+            if (tailLength(entry) >= length && tailMismatch(entry, offset, length, prefix) == length) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Remove the tail at the entry
+     * @param entry entry offset
+     */
+    public void bucketRemove(final int entry) {
+        final int used = bucketLength();
+        final int next = entry + 1 + tailLength(entry);
+        if (next < used) {
+            final MemorySegment memory = memorySegment();
+            MemorySegment.copy(memory, fieldOffset(BUCKET_OFFSET + next),
+                memory, fieldOffset(BUCKET_OFFSET + entry), used - next);
+        }
+        nativeByte(BUCKET_LENGTH_OFFSET, (byte) (used - next + entry));
+    }
+
+    /**
+     * Remove the tails starting with the prefix at offset
+     * @param offset prefix offset
+     * @param length prefix length
+     * @param prefix bytes
+     * @return number of tails removed
+     */
+    public int bucketRemove(final int offset, final int length, final byte[] prefix) {
+        int removed = 0;
+        for (int entry = 0; entry < bucketLength(); ) {
+            final int tailLength = tailLength(entry);
+            if (tailLength >= length && tailMismatch(entry, offset, length, prefix) == length) {
+                bucketRemove(entry);
+                ++removed;
+            } else {
+                entry += 1 + tailLength;
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Compare the first bytes of the tail at the entry with the string at offset, eight bytes at a time
+     * @param entry entry offset
+     * @param offset string offset
+     * @param length bytes to compare, at most the tail length
+     * @param string bytes
+     * @return the first mismatch position, or length when equal
+     */
+    private int tailMismatch(final int entry, final int offset, final int length, final byte[] string) {
+        final int tail = BUCKET_OFFSET + entry + 1;
         int i = 0;
-        for (; i + Long.BYTES <= common; i += Long.BYTES) {
-            final long difference = nativeLong(LEAF_STRING_OFFSET + i) ^ (long) LONG_VIEW.get(string, offset + i);
+        for (; i + Long.BYTES <= length; i += Long.BYTES) {
+            final long difference = nativeLong(tail + i) ^ (long) LONG_VIEW.get(string, offset + i);
             if (difference != 0) {
                 return i + Long.numberOfTrailingZeros(difference) / Byte.SIZE;
             }
         }
-        for (; i < common; ++i) {
-            if (nativeByte(LEAF_STRING_OFFSET + i) != string[offset + i]) {
+        for (; i < length; ++i) {
+            if (nativeByte(tail + i) != string[offset + i]) {
                 return i;
             }
         }
-        return length == leafLength ? EQUAL : common;
+        return length;
+    }
+
+    /**
+     * Number of strings ending in this node: the node string and the keys that end a string, or the bucket tails
+     * @return count
+     */
+    public int stringCount() {
+        final byte header = header();
+        if (Header.isBucket(header)) {
+            return bucketCount();
+        }
+        int count = Header.containsString(header) ? 1 : 0;
+        for (int i = Header.children(header) - 1; i >= 0; --i) {
+            if (containsKey(i)) {
+                ++count;
+            }
+        }
+        return count;
     }
 
     /**
@@ -186,6 +417,12 @@ public class Node extends BlockFlyweight {
     public void removeChild(int position) {
         final byte header = header();
         final int newCount = Header.children(header) - 1;
+        final int overflow = overflow();
+        if (overflow == position) {
+            overflow(NOT_FOUND);
+        } else if (overflow == newCount) {
+            overflow(position);
+        }
         if (position != newCount) {
             key(position, key(newCount));
             containsKey(position, containsKey(newCount));
@@ -223,7 +460,34 @@ public class Node extends BlockFlyweight {
         header = Header.children(header, count);
         header = Header.containsString(header, contains);
         header(header);
+        overflow(NOT_FOUND);
         return this;
+    }
+
+    /**
+     * Position of the overflow key, which leads to a node holding the keys beyond {@link #BLOCK_COUNT} and does
+     * not consume a byte of the string. Its key byte is {@link #EMPTY_KEY}, but a key of 0 may also be a string byte.
+     * @return position or {@link #NOT_FOUND}
+     */
+    public int overflow() {
+        return nativeByte(OVERFLOW_OFFSET) - 1;
+    }
+
+    /**
+     * Set the position of the overflow key
+     * @param position position or {@link #NOT_FOUND}
+     */
+    public void overflow(final int position) {
+        nativeByte(OVERFLOW_OFFSET, (byte) (position + 1));
+    }
+
+    /**
+     * Check if the key at the given position is the overflow key
+     * @param position key position
+     * @return true for the overflow key
+     */
+    public boolean isOverflow(final int position) {
+        return nativeByte(OVERFLOW_OFFSET) == position + 1;
     }
 
     /**
@@ -302,23 +566,19 @@ public class Node extends BlockFlyweight {
     }
 
     /**
-     * Find the position of the given key
+     * Find the position of the given key, or of the overflow key when the node has none
      * @param count key count
      * @param key value
      * @return position or -1 when not found
      */
     public int keyPosition(final int count, final byte key) {
-        int found = NOT_FOUND;
+        final int overflow = overflow();
         for (int i = 0; i < count; ++i) {
-            final byte nodeKey = key(i);
-            if (nodeKey == key) {
+            if (key(i) == key && i != overflow) {
                 return i;
             }
-            if (nodeKey == EMPTY_KEY) {
-                found = i;
-            }
         }
-        return found;
+        return overflow;
     }
 
     /**
@@ -409,10 +669,17 @@ public class Node extends BlockFlyweight {
         byte header = header();
         builder.setLength(0);
         builder.append("{Node").append(segment()).append('#').append(block()).append(", \"");
-        if (Header.isLeaf(header)) {
-            final byte[] bytes = new byte[leafLength()];
-            leafString(bytes.length, bytes);
-            return builder.append(new String(bytes)).append("\". leaf}");
+        if (Header.isBucket(header)) {
+            final byte[] bytes = new byte[TAIL_LENGTH];
+            final int used = bucketLength();
+            for (int entry = 0; entry < used; entry += 1 + tailLength(entry)) {
+                tail(entry, bytes, 0);
+                if (entry >= 1) {
+                    builder.append("\", \"");
+                }
+                builder.append(new String(bytes, 0, tailLength(entry)));
+            }
+            return builder.append(Header.isHybrid(header) ? "\" hybrid}" : "\" bucket}");
         }
         final int stringLength = Header.stringLength(header);
         if (stringLength >= 1) {
@@ -430,7 +697,7 @@ public class Node extends BlockFlyweight {
             builder.append(" [");
             for (int i = 0; i < count; ++i) {
                 final char value = (char) key(i);
-                builder.append(value == EMPTY_KEY ? '@' :  value);
+                builder.append(isOverflow(i) ? '@' :  value);
                 if (containsKey(i)) {
                     builder.append('.');
                 }
@@ -489,12 +756,18 @@ public class Node extends BlockFlyweight {
         private static final byte INDEX_COUNT_MASK = 0xff >>> (Byte.SIZE - INDEX_COUNT_LENGTH);
         private static final byte STRLEN_MASK = 0xff >>> (Byte.SIZE - STRLEN_LENGTH);
 
-        // leaves use a string length that inline strings never reach, contain one string and have no children
-        private static final int LEAF_STRLEN = STRLEN_MASK;
-        public static final byte LEAF = (byte) ((LEAF_STRLEN << STRLEN_OFFSET) | (CONTAINS_STRING_MASK << CONTAINS_STRING_OFFSET));
+        // buckets use string lengths that inline strings never reach, contain strings and have no children
+        private static final int BUCKET_STRLEN = STRLEN_MASK;
+        private static final int HYBRID_STRLEN = STRLEN_MASK - 1;
+        public static final byte BUCKET = (byte) ((BUCKET_STRLEN << STRLEN_OFFSET) | (CONTAINS_STRING_MASK << CONTAINS_STRING_OFFSET));
+        public static final byte HYBRID = (byte) ((HYBRID_STRLEN << STRLEN_OFFSET) | (CONTAINS_STRING_MASK << CONTAINS_STRING_OFFSET));
 
-        public static boolean isLeaf(final int header) {
-            return stringLength(header) == LEAF_STRLEN;
+        public static boolean isBucket(final int header) {
+            return stringLength(header) >= HYBRID_STRLEN;
+        }
+
+        public static boolean isHybrid(final int header) {
+            return stringLength(header) == HYBRID_STRLEN;
         }
 
         public static int containsStringCount(final byte header) {

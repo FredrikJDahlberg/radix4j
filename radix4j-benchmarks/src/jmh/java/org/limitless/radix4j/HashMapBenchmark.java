@@ -18,8 +18,6 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 public class HashMapBenchmark extends BaseBenchmark {
 
-    private static final String PREFIX = new String(STRING, 0, 10, StandardCharsets.ISO_8859_1);
-
     @State(Scope.Benchmark)
     public static class HashMapState extends BaseState {
         HashSet<String> set;
@@ -45,8 +43,8 @@ public class HashMapBenchmark extends BaseBenchmark {
     public void setupFullHashMap(final FullHashMapState state) {
         state.set = new HashSet<>(SIZE);
         state.setup();
-        for (int offset = 0; offset < strings.length; offset += STRING_LENGTH) {
-            state.set.add(string(offset));
+        for (int i = 0; i < SIZE; ++i) {
+            state.set.add(string(i));
         }
     }
 
@@ -57,17 +55,17 @@ public class HashMapBenchmark extends BaseBenchmark {
 
     @Benchmark
     public boolean hashMapAdd(final HashMapState state) {
-        return state.updateStats(state.set.add(string(state.stringOffset)));
+        return state.updateStats(state.set.add(string(state.index)));
     }
 
     @Benchmark
     public boolean hashMapContains(final FullHashMapState state) {
-        return state.updateStats(state.set.contains(string(state.stringOffset)));
+        return state.updateStats(state.set.contains(string(state.index)));
     }
 
     @Benchmark
     public boolean hashMapRemove(final FullHashMapState state) {
-        return state.updateStats(state.set.remove(string(state.stringOffset)));
+        return state.updateStats(state.set.remove(string(state.index)));
     }
 
     @Benchmark
@@ -85,7 +83,7 @@ public class HashMapBenchmark extends BaseBenchmark {
     public int hashMapPrefixForEach(final FullHashMapState state) {
         final int[] result = {0};
         state.set.forEach(string -> {
-            if (string.startsWith(PREFIX)) {
+            if (string.startsWith(prefixString)) {
                 ++result[0];
             }
         });
@@ -96,11 +94,11 @@ public class HashMapBenchmark extends BaseBenchmark {
     @Measurement(iterations = 5, batchSize = 1)
     @BenchmarkMode(Mode.SingleShotTime)
     public int hashMapPrefixRemove(final FullHashMapState state) {
-        state.set.removeIf(string -> string.startsWith(PREFIX));
+        state.set.removeIf(string -> string.startsWith(prefixString));
         return state.set.size();
     }
 
-    private static String string(final int offset) {
-        return new String(strings, offset, STRING_LENGTH, StandardCharsets.ISO_8859_1);
+    private static String string(final int index) {
+        return new String(strings, offsets[index], length(index), StandardCharsets.ISO_8859_1);
     }
 }

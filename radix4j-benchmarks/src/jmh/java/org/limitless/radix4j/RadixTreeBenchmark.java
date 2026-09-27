@@ -30,7 +30,7 @@ public class RadixTreeBenchmark extends BaseBenchmark {
 
     @Benchmark
     public boolean radixTreeAdd(final EmptyTree state) {
-        return state.updateStats(state.tree.add(state.stringOffset, STRING_LENGTH, strings));
+        return state.updateStats(state.tree.add(state.position(), state.length(), strings));
     }
 
     @State(Scope.Benchmark)
@@ -41,8 +41,8 @@ public class RadixTreeBenchmark extends BaseBenchmark {
     public void setupFullTree(final FullTree state) {
         state.tree = new RadixTree(RadixTree.MAX_BLOCKS_PER_SEGMENT);
         state.setup();
-        for (int offset = 0; offset < strings.length; offset += STRING_LENGTH) {
-            state.tree.add(offset, STRING_LENGTH, strings);
+        for (int i = 0; i < SIZE; ++i) {
+            state.tree.add(offsets[i], length(i), strings);
         }
     }
 
@@ -53,12 +53,12 @@ public class RadixTreeBenchmark extends BaseBenchmark {
 
     @Benchmark
     public boolean radixTreeContains(final FullTree state) {
-        return state.updateStats(state.tree.contains(state.stringOffset, STRING_LENGTH, strings));
+        return state.updateStats(state.tree.contains(state.position(), state.length(), strings));
     }
 
     @Benchmark
     public boolean radixTreeRemove(final FullTree state) {
-        return state.updateStats(state.tree.remove(state.stringOffset, STRING_LENGTH, strings));
+        return state.updateStats(state.tree.remove(state.position(), state.length(), strings));
     }
 
     @Benchmark
@@ -75,7 +75,7 @@ public class RadixTreeBenchmark extends BaseBenchmark {
     @BenchmarkMode(Mode.SingleShotTime)
     public int radixTreePrefixForEach(final FullTree state) {
         int[] result = {0};
-        state.tree.forEach(10, STRING, node -> ++result[0]);
+        state.tree.forEach(prefix.length, prefix, node -> ++result[0]);
         return result[0];
     }
 
@@ -83,7 +83,7 @@ public class RadixTreeBenchmark extends BaseBenchmark {
     @Measurement(iterations = 5, batchSize = 1)
     @BenchmarkMode(Mode.SingleShotTime)
     public int radixTreePrefixRemove(final FullTree state) {
-        state.tree.removeStrings(10, STRING);
+        state.tree.removeStrings(prefix.length, prefix);
         return state.tree.size();
     }
 }

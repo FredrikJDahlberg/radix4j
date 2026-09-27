@@ -3,8 +3,12 @@ package org.limitless.radix4j;
 import org.junit.jupiter.api.Test;
 
 import java.lang.foreign.Arena;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import static org.limitless.radix4j.Node.Header;
 
@@ -12,13 +16,13 @@ public class RadixTreeTest {
 
     @Test
     public void splitShortPrefix() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cats", "cabbage");
     }
 
     @Test
     public void splitLongerPrefix() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "money", "monkey", "montage");
     }
 
@@ -74,10 +78,12 @@ public class RadixTreeTest {
 
     @Test
     public void memoryOverflow() {
+        // random numbers share little, so they fill the 65,536 segments of 64 blocks
         final var tree = new RadixTree(64);
+        final var random = new java.util.SplittableRandom(1);
         assertThrows(IllegalStateException.class, () -> {
             for (int i = 0; i < 42_000_000; ++i) {
-                tree.add((i + "").getBytes());
+                tree.add(Long.toString(random.nextLong()).getBytes());
             }
         });
         System.out.println(tree);
@@ -93,7 +99,7 @@ public class RadixTreeTest {
 
     @Test
     public void reuseSlotOnlyAtLastChar() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final String prefix = "1234567890-";
         final String[] strings = {
             prefix + "A", prefix + "B", prefix + "C", prefix + "D",
@@ -116,27 +122,19 @@ public class RadixTreeTest {
 
     @Test
     public void forEach() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
         int[] count = { 0 };
         tree.forEach(node -> {
             System.out.println(node);
-            byte header = node.header();
-            if (Header.containsString(header)) {
-                ++count[0];
-            }
-            for (int i = 0; i < Header.children(header); ++i) {
-                if (node.containsKey(i)) {
-                    ++count[0];
-                }
-            }
+            count[0] += node.stringCount();
         });
         assertEquals(tree.size(), count[0]);
     }
 
     @Test
     public void removeStrings() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
         tree.forEach(System.out::println);
         System.out.println("pi");
@@ -161,7 +159,7 @@ public class RadixTreeTest {
 
     @Test
     public void removeStringsWithPrefix() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
 
         System.out.println("cats");
@@ -188,7 +186,7 @@ public class RadixTreeTest {
 
     @Test
     public void removePrefixString() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "word", "word_cats", "word_cats_tail");
         assertEquals(3, tree.size());
         assertTrue(tree.removeStrings(14, "word_cats_tail".getBytes()));
@@ -204,7 +202,7 @@ public class RadixTreeTest {
 
     @Test
     public void removeStringsWithoutMatch() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cow", "cats");
         assertFalse(tree.removeStrings(3, "dog".getBytes()));
         assertFalse(tree.removeStrings(2, "cx".getBytes()));
@@ -220,7 +218,7 @@ public class RadixTreeTest {
 
     @Test
     public void removeStringsIncludesLongerStrings() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cats", "catsup", "dog");
         assertTrue(tree.removeStrings(3, "cat".getBytes()));
         assertEquals(1, tree.size());
@@ -234,7 +232,7 @@ public class RadixTreeTest {
 
     @Test
     public void addAfterRemoveStringsEmptiesTree() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cow");
         assertTrue(tree.removeStrings(1, "c".getBytes()));
         assertEmpty(tree);
@@ -246,7 +244,7 @@ public class RadixTreeTest {
 
     @Test
     public void addRemoveContainsBasics() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat", "cats", "cow", "cabbage", "crow", "pig", "pin", "cabs");
         assertTrue(tree.remove("cat".getBytes()));
         assertFalse(tree.contains("cat".getBytes()));
@@ -256,7 +254,8 @@ public class RadixTreeTest {
 
     @Test
     public void forEachPrefixStrings() {
-        final var tree = new RadixTree();
+        assumeTrue(leaves(), "a bucket where the prefix ends also holds other strings");
+        final var tree = newTree();
         check(tree, false, "cat", "cats", "cow", "coward");
 
         assertEquals(2, countStrings(tree, "ca"));
@@ -274,7 +273,8 @@ public class RadixTreeTest {
 
     @Test
     public void forEachPrefixKeys() {
-        final var tree = new RadixTree();
+        assumeTrue(leaves(), "a bucket where the prefix ends also holds other strings");
+        final var tree = newTree();
         check(tree, false, "00cat", "00cats", "00cow", "00cabbage", "01crow", "01pig", "01pin", "01cabs");
         assertEquals(8, countStrings(tree, "0"));
         assertEquals(4, countStrings(tree, "00"));
@@ -288,7 +288,7 @@ public class RadixTreeTest {
 
     @Test
     public void forEachInvalidPrefix() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cat");
         assertThrows(IllegalArgumentException.class, () -> tree.forEach(-1, "cat".getBytes(), _ -> {}));
         assertThrows(IllegalArgumentException.class, () -> tree.forEach(4, "cat".getBytes(), _ -> {}));
@@ -303,22 +303,19 @@ public class RadixTreeTest {
     }
 
     private static int storedStrings(final Node node) {
-        final byte header = node.header();
-        int count = Header.containsString(header) ? 1 : 0;
-        for (int i = 0; i < Header.children(header); ++i) {
-            if (node.containsKey(i)) {
-                ++count;
-            }
-        }
-        return count;
+        return node.stringCount();
     }
 
     @Test
     public void splitLongerStringWithIncludedKey() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "cabbage", "cabs");
         assertFalse(tree.contains("cabb"));
         assertFalse(tree.contains("X"));
+        if (!leaves()) {
+            new Checker().check(tree, node -> assertEquals(List.of("cabbage", "cabs"), tails(node)));
+            return;
+        }
 
         new Checker().check(tree,
             node -> {
@@ -338,17 +335,16 @@ public class RadixTreeTest {
     }
 
     @Test
-    public void addLeaf() {
-        final var tree = new RadixTree();
+    public void addBucket() {
+        final var tree = newTree();
         addContains(tree, "abcdefghij");
         assertFalse(tree.contains("abcdefghi"));
         assertFalse(tree.contains("abcdefghijk"));
         assertFalse(tree.contains("abcdefghiX"));
         new Checker().check(tree,
             node -> {
-                assertTrue(node.isLeaf());
-                assertEquals(10, node.leafLength());
-                assertEquals("abcdefghij", getLeafString(node));
+                assertEquals(11, node.bucketLength());
+                assertEquals(List.of("abcdefghij"), tails(node));
             }
         );
         assertTrue(tree.remove("abcdefghij"));
@@ -357,19 +353,23 @@ public class RadixTreeTest {
 
     @Test
     public void splitLeaf() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         addContains(tree, "abcdefghij");
         addContains(tree, "abcXYZ123456");
+        if (!leaves()) {
+            new Checker().check(tree, node -> assertEquals(List.of("abcdefghij", "abcXYZ123456"), tails(node)));
+            return;
+        }
         new Checker().check(tree,
             node -> {
                 assertEquals("abc", getString(node));
                 assertFalse(Header.containsString(node.header()));
                 assertEquals(2, Header.children(node.header()));
-                assertEquals('d', node.key(0));
-                assertEquals('X', node.key(1));
+                assertEquals('X', node.key(0));
+                assertEquals('d', node.key(1));
             },
-            node -> assertEquals("YZ123456", getLeafString(node)),
-            node -> assertEquals("efghij", getLeafString(node))
+            node -> assertEquals(List.of("efghij"), tails(node)),
+            node -> assertEquals(List.of("YZ123456"), tails(node))
         );
     }
 
@@ -378,27 +378,27 @@ public class RadixTreeTest {
         final String leaf = "0123456789abcdefghijklmnopqrstuvwxyz";
         for (int i = 0; i < leaf.length(); ++i) {
             final String prefix = leaf.substring(0, i);
-            check(new RadixTree(), leaf, prefix + "#");
-            check(new RadixTree(), leaf, prefix + "#tail-longer-than-an-inline-string");
+            check(newTree(), leaf, prefix + "#");
+            check(newTree(), leaf, prefix + "#tail-longer-than-an-inline-string");
             if (i >= 1) {
-                check(new RadixTree(), leaf, prefix);
-                check(new RadixTree(), prefix, leaf);
+                check(newTree(), leaf, prefix);
+                check(newTree(), prefix, leaf);
             }
-            check(new RadixTree(), leaf, leaf + prefix + "#");
+            check(newTree(), leaf, leaf + prefix + "#");
         }
     }
 
     @Test
     public void splitLeafBelowKey() {
         final String prefix = "1234567890-";
-        check(new RadixTree(), prefix + "A", prefix + "Babcdefghij", prefix + "Babcdefghik", prefix + "Babc");
+        check(newTree(), prefix + "A", prefix + "Babcdefghij", prefix + "Babcdefghik", prefix + "Babc");
     }
 
     @Test
     public void addStringLongerThanLeaf() {
         final String string = "x".repeat(200);
         for (final int length : new int[] { 62, 63, 64, 67, 68, 69, 124, 125, 131, 200 }) {
-            final var tree = new RadixTree();
+            final var tree = newTree();
             final String a = string.substring(0, length);
             check(tree, a, a.substring(0, length - 1) + "y", a.substring(0, length / 2) + "z", a + "w");
         }
@@ -406,13 +406,13 @@ public class RadixTreeTest {
 
     @Test
     public void splitShorterStringWithIncludedKey() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "cat", "cabs");
     }
 
     @Test
     public void addLongString() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final String prefix = "12345678901234567890-";
         check(tree, false,
             prefix + "a", prefix + "b", prefix + "c", prefix + "d",
@@ -449,7 +449,7 @@ public class RadixTreeTest {
 
     @Test
     public void addWithOffset() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final byte[] strings = "cat bison dog crow".getBytes();
         assertTrue(tree.add(0, 3, strings));
         assertTrue(tree.add(4,5, strings));
@@ -465,7 +465,7 @@ public class RadixTreeTest {
 
     @Test
     public void treeWithOneSegment() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final int count = 500_000;
         final String prefix = "abcdefghijklmnop-";
         for (int i = 0; i < count; ++i) {
@@ -482,118 +482,118 @@ public class RadixTreeTest {
 
     @Test
     public void addRootParent() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "abc", "xyz", "123");
     }
 
     @Test
     public void addRootParentAndKey() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, false, "ab", "xy", "x");
     }
 
     @Test
     public void addParentChildAndKey() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "abcdef", "abcdxy", "abcdx", "abcd");
     }
 
     @Test
     public void splitRoot2String15() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "abcdefghijklm028", "abcdefghijklm030");
     }
 
     @Test
     public void addRootCompleteKeyString2() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "on", "one");
     }
 
     @Test
     public void addRootCompleteKeyString3() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "cat", "cats");
     }
 
     @Test
     public void addRootKeyString8() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "ABCDEFG_H", "ABCDEFG_I");
     }
 
     @Test
     public void splitRoot2String4Keys2() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "m028", "m030");
     }
 
     @Test
     public void splitRoot3String4Keys3() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "aaaam028", "aaaam029", "aaaam030");
     }
 
     @Test
     public void splitRoot4String4Keys4() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "aaaam025", "aaaam026", "aaaam027", "aaaam030");
     }
 
     @Test
     public void splitRoot5String5Keys5() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "aaaam025", "aaaam026", "aaaam027", "aaaam028", "aaaam030");
     }
 
     @Test
     public void addParentAndCompleteKeys() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "abc250", "abc260", "abc270", "abc280");
     }
 
     @Test
     public void splitRootString3() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "cat", "car");
     }
 
     @Test
     public void splitRootString4() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "cars", "cart");
     }
 
     @Test
     public void addRootString11Keys6() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final String prefix = "abcdefghij-";
         check(tree, prefix + 0, prefix + 1, prefix + 2, prefix + 3, prefix + 4, prefix + 5);
     }
 
     @Test
     public void splitRoot2String11Keys1() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "flabbergasted", "flabbergast");
     }
 
     @Test
     public void splitRootString6() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final String prefix = "123456789012345-";
         check(tree, prefix + 17, prefix + 18, prefix + 19, prefix + 20);
     }
 
     @Test
     public void removeCompleteKeyWithChildren() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final String prefix = "12345678901234567890_";
         check(tree, prefix + "1", prefix + "2", prefix + "10");
     }
 
     @Test
     public void removeRootString() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         addContains(tree, "cat");
         addContains(tree, "cats");
         assertEquals(2, tree.size());
@@ -612,19 +612,19 @@ public class RadixTreeTest {
 
     @Test
     public void removeRootEmptyString() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "cat", "pig");
     }
 
     @Test
     public void removeNodeKey() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "cat", "cats", "pig");
     }
 
     @Test
     public void removeRootKey() {
-        final  var tree = new RadixTree();
+        final  var tree = newTree();
         addContains(tree, "cat");
         addContains(tree, "cats");
         assertEquals(2, tree.size());
@@ -641,7 +641,7 @@ public class RadixTreeTest {
 
     @Test
     public void removeRootSubString() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         addContains(tree, "cat");
         addContains(tree, "cats");
         assertEquals(2, tree.size());
@@ -649,6 +649,10 @@ public class RadixTreeTest {
 
         assertTrue(tree.contains("cats"));
         assertEquals(1, tree.size());
+        if (!leaves()) {
+            new Checker().check(tree, node -> assertEquals(List.of("cats"), tails(node)));
+            return;
+        }
         new Checker().check(tree,
             node -> {
                 final byte header = node.header();
@@ -663,14 +667,14 @@ public class RadixTreeTest {
 
     @Test
     public void removeRootString11Keys6() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         final String prefix = "abcdefghij-";
         check(tree, prefix + "0", prefix + "1", prefix + "2", prefix + "3", prefix + "4", prefix + "5");
     }
 
     @Test
     public void removeRoot() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         tree.add("monkey");
         assertTrue(tree.remove("monkey"));
         assertTrue(tree.isEmpty());
@@ -685,26 +689,26 @@ public class RadixTreeTest {
 
     @Test
     public void addParentWithMergeAndRemove() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "a", "pig");
     }
 
     @Test
     public void addParentMissingCompleteKey() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "1234567890-1", "1234567890-10", "1234567890-11");
     }
 
     @Test
     public void missingNodeKey() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "1234D2", "1234D3", "1234D4", "1234D5", "1234D6", "1234D7", "1234D8",
             "1234D9", "1234DA", "1234DB", "1234DC");
     }
 
     @Test
     public void treeToString() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         assertTrue(tree.add("1234_1"));
         assertTrue(tree.add("1234_2"));
         final String s = tree.toString();
@@ -720,7 +724,7 @@ public class RadixTreeTest {
         // "12345AB" adds a child node for "B" under that key.
         // Bug: removing "12345AB" freed the ancestor node (children=1, no containsString),
         // silently deleting "12345A" from the tree.
-        final var tree = new RadixTree();
+        final var tree = newTree();
         assertTrue(tree.add("12345A"));
         assertTrue(tree.add("12345AB"));
         assertEquals(2, tree.size());
@@ -741,7 +745,7 @@ public class RadixTreeTest {
         // removed, or "12345AA" which was never added) would fall through the key-found
         // branch with childOffset==EMPTY_BLOCK and loop back into the same node on the
         // next iteration, producing false positives for any extension ending with 'A'.
-        final var tree = new RadixTree();
+        final var tree = newTree();
         assertTrue(tree.add("12345A"));
         assertTrue(tree.add("12345AB"));
         assertTrue(tree.remove("12345AB"));
@@ -756,7 +760,7 @@ public class RadixTreeTest {
 
     @Test
     public void addEmptyString() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         assertFalse(tree.add(""));
         assertFalse(tree.add(new byte[0]));
         assertEmpty(tree);
@@ -772,7 +776,7 @@ public class RadixTreeTest {
 
     @Test
     public void addNonAsciiStrings() {
-        final var tree = new RadixTree();
+        final var tree = newTree();
         check(tree, "é", "naïve", "naïf", "日本語", "日本", "ÿÿ", "\u0080");
 
         final byte[] high = { (byte) 0x80, (byte) 0xff, (byte) 0xfe, 0x7f, (byte) 0x81 };
@@ -904,11 +908,23 @@ public class RadixTreeTest {
         assertEquals(size + 1, tree.size());
     }
 
-    private static String getLeafString(final Node node) {
-        assertTrue(node.isLeaf());
-        final byte[] bytes = new byte[node.leafLength()];
-        node.leafString(bytes.length, bytes);
-        return new String(bytes);
+    protected RadixTree newTree() {
+        return new RadixTree();
+    }
+
+    protected boolean leaves() {
+        return false;
+    }
+
+    static List<String> tails(final Node node) {
+        assertTrue(node.isBucket(), node::toString);
+        final List<String> tails = new ArrayList<>();
+        final byte[] bytes = new byte[Node.TAIL_LENGTH];
+        for (int entry = 0; entry < node.bucketLength(); entry += 1 + node.tailLength(entry)) {
+            node.tail(entry, bytes, 0);
+            tails.add(new String(bytes, 0, node.tailLength(entry), StandardCharsets.ISO_8859_1));
+        }
+        return tails;
     }
 
     private static String getString(Node node) {

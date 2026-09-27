@@ -4,4 +4,4 @@ before_install:
   - mkdir -p /tmp/jdk23 && tar -xzf /tmp/jdk23.tar.gz -C /tmp/jdk23 --strip-components=1
 install:
   - echo "JitPack GROUP=$GROUP ARTIFACT=$ARTIFACT VERSION=$VERSION"
-  - JAVA_HOME=/tmp/jdk23 ./gradlew :radix4j:publishToMavenLocal -x test -PpublishGroup=$GROUP -PpublishVersion=$VERSION
+  - JAVA_HOME=/tmp/jdk23 ./gradlew :radix4j:publishToMavenLocal :radix4j-clordid:publishToMavenLocal -x test -PpublishGroup=$GROUP -PpublishVersion=$VERSION

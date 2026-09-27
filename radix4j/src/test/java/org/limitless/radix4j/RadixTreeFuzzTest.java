@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
+import java.lang.foreign.Arena;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
@@ -15,13 +16,15 @@ import static org.limitless.radix4j.Node.Header;
 /**
  * Differential tests comparing {@link RadixTree} against a {@link HashSet}, with a structural
  * check of the node graph after every mutation. Strings are mapped one char to one byte (ISO-8859-1)
- * so that the random alphabets can cover the full byte range.
+ * so that the random alphabets can cover the full byte range. Every test runs with buckets of many
+ * strings and with buckets of one string (leaves).
  */
 public class RadixTreeFuzzTest {
 
     private static final int SEEDS = 50;
     private static final int OPERATIONS = 1_000;
     private static final int CONSTRUCTOR_BLOCKS = 5;
+    private static final int[] BUCKET_STRINGS = { Node.MAX_BUCKET_STRINGS, 3, 1 };
 
     @Test
     public void splitWithOneCharLeftDropsTail() {
@@ -82,34 +85,57 @@ public class RadixTreeFuzzTest {
         checkOperations("+a", "+b", "+c", "+d", "+e", "+f", "+g", "+h", "+i", "+j", "+k", "+lx", "-a", "+l");
     }
 
+    @Test
+    public void zeroKeyIsNotAnOverflowKey() {
+        // a 0 key next to other keys, in a full node and in an overflow node
+        checkStrings("\0a", "\1a", "\2a");
+        checkStrings("\0a", "\1a", "\2a", "\3a", "\4a", "\5a", "\6a", "\7a", "\10a", "\11a", "\12a", "\13a");
+        checkStrings("\1a", "\2a", "\3a", "\4a", "\5a", "\6a", "\7a", "\10a", "\11a", "\12a", "\13a", "\0a");
+        checkStrings("x\0", "x\1", "x\2", "x\3", "x\4", "x\5", "x\6", "x\7", "x\10", "x\11", "x\12", "x");
+        checkStrings("\0", "\0\0", "\0\0\0\0\0\0\0", "\0\0\0\0\0\0\0\1");
+    }
+
+    @Test
+    public void removeZeroKeyAndOverflowKey() {
+        checkOperations("+\0", "+\1", "+\2", "+\3", "+\4", "+\5", "+\6", "+\7", "+\10", "+\11", "+\12x", "+\13",
+            "-\0", "+\0", "-\13", "-\12x", "+\14", "-\0", "+\0y");
+    }
+
     @TestFactory
     public Stream<DynamicTest> addRemoveContains() {
         final List<DynamicTest> tests = new ArrayList<>();
         final int[][] alphabets = { // first byte, size
-            { 'a', 2 }, { 'a', 3 }, { 'a', 4 }, { 'a', 16 }, { 0x7e, 4 }, { 0xf0, 16 }
+            { 'a', 2 }, { 'a', 3 }, { 'a', 4 }, { 'a', 16 }, { 0x7e, 4 }, { 0xf0, 16 }, { 0x00, 2 }, { 0x00, 16 }
         };
-        for (final int[] alphabet : alphabets) {
-            for (final int maxLength : new int[] { 4, 8, 14, 70 }) {
-                final String name = String.format("first=0x%02x, alphabet=%d, maxLength=%d",
-                    alphabet[0], alphabet[1], maxLength);
-                tests.add(DynamicTest.dynamicTest(name,
-                    () -> assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
-                        for (int seed = 0; seed < SEEDS; ++seed) {
-                            fuzz(seed, (char) alphabet[0], alphabet[1], maxLength);
-                        }
-                    })));
+        for (final int bucketStrings : BUCKET_STRINGS) {
+            for (final int[] alphabet : alphabets) {
+                for (final int maxLength : new int[] { 4, 8, 14, 70 }) {
+                    final String name = String.format("bucketStrings=%d, first=0x%02x, alphabet=%d, maxLength=%d",
+                        bucketStrings, alphabet[0], alphabet[1], maxLength);
+                    tests.add(DynamicTest.dynamicTest(name,
+                        () -> assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+                            for (int seed = 0; seed < SEEDS; ++seed) {
+                                fuzz(bucketStrings, seed, (char) alphabet[0], alphabet[1], maxLength);
+                            }
+                        })));
+                }
             }
         }
         return tests.stream();
     }
 
-    private static void fuzz(final int seed, final char first, final int alphabet, final int maxLength) {
+    private static void fuzz(final int bucketStrings, final int seed, final char first, final int alphabet,
+                             final int maxLength) {
         final Random random = new Random(seed);
         final List<String> log = new ArrayList<>();
-        final String failure = run(log, random, first, alphabet, maxLength);
+        final String failure = run(bucketStrings, log, random, first, alphabet, maxLength);
         if (failure != null) {
-            fail("seed=" + seed + ": " + failure + "\nminimal operations: " + shrink(log));
+            fail("seed=" + seed + ": " + failure + "\nminimal operations: " + shrink(bucketStrings, log));
         }
+    }
+
+    private static RadixTree tree(final int bucketStrings) {
+        return new RadixTree(RadixTree.DEFAULT_BLOCKS_PER_SEGMENT, Arena.ofShared(), bucketStrings);
     }
 
     /**
@@ -117,12 +143,13 @@ public class RadixTreeFuzzTest {
      * #forEach(prefix).
      * @return failure description or null
      */
-    private static String run(final List<String> log,
+    private static String run(final int bucketStrings,
+                              final List<String> log,
                               final Random random,
                               final char first,
                               final int alphabet,
                               final int maxLength) {
-        final RadixTree tree = new RadixTree();
+        final RadixTree tree = tree(bucketStrings);
         final Set<String> expected = new HashSet<>();
         try {
             for (int i = 0; i < OPERATIONS; ++i) {
@@ -161,7 +188,7 @@ public class RadixTreeFuzzTest {
                     }
                 }
                 if (operation != 2) {
-                    final String error = verify(tree, expected);
+                    final String error = verify(tree, expected, bucketStrings);
                     if (error != null) {
                         return "after " + log.getLast() + ": " + error;
                     }
@@ -173,8 +200,8 @@ public class RadixTreeFuzzTest {
         }
     }
 
-    private static String replay(final List<String> log) {
-        final RadixTree tree = new RadixTree();
+    private static String replay(final int bucketStrings, final List<String> log) {
+        final RadixTree tree = tree(bucketStrings);
         final Set<String> expected = new HashSet<>();
         try {
             for (final String entry : log) {
@@ -200,7 +227,7 @@ public class RadixTreeFuzzTest {
                 if (wrong) {
                     return "wrong return value for " + entry;
                 }
-                final String error = verify(tree, expected);
+                final String error = verify(tree, expected, bucketStrings);
                 if (error != null) {
                     return error;
                 }
@@ -211,9 +238,9 @@ public class RadixTreeFuzzTest {
         }
     }
 
-    private static List<String> shrink(final List<String> log) {
+    private static List<String> shrink(final int bucketStrings, final List<String> log) {
         List<String> current = new ArrayList<>(log);
-        if (replay(current) == null) {
+        if (replay(bucketStrings, current) == null) {
             return current;
         }
         boolean progress = true;
@@ -222,7 +249,7 @@ public class RadixTreeFuzzTest {
             for (int i = 0; i < current.size(); ++i) {
                 final List<String> candidate = new ArrayList<>(current);
                 candidate.remove(i);
-                if (replay(candidate) != null) {
+                if (replay(bucketStrings, candidate) != null) {
                     current = candidate;
                     progress = true;
                     --i;
@@ -246,12 +273,14 @@ public class RadixTreeFuzzTest {
     }
 
     /**
-     * Checks the node graph (no cycles or shared nodes, valid headers, no dangling keys), the
-     * number of stored strings, and that every stored string and none of its other prefixes are found.
+     * Checks the node graph (no cycles or shared nodes, valid headers and buckets, no dangling keys, hybrid
+     * buckets shared by exactly the keys their tails start with), the number of stored strings, and that
+     * every stored string and none of its other prefixes are found.
      * @return error description or null
      */
-    private static String verify(final RadixTree tree, final Set<String> expected) {
+    private static String verify(final RadixTree tree, final Set<String> expected, final int bucketStrings) {
         final Set<Integer> visited = new HashSet<>();
+        final Map<Integer, Set<Byte>> parentKeys = new HashMap<>();
         final int[] strings = { 0 };
         try {
             tree.forEach(node -> {
@@ -259,13 +288,35 @@ public class RadixTreeFuzzTest {
                     throw new AssertionError("node visited twice: " + node);
                 }
                 final byte header = node.header();
-                if (node.isLeaf()) {
-                    final int length = node.leafLength();
-                    if (header != Header.LEAF || length <= Node.STRING_LENGTH || length > Node.LEAF_LENGTH) {
-                        throw new AssertionError("invalid leaf: " + node);
+                final Set<Byte> keys = parentKeys.getOrDefault(node.offset(), Set.of());
+                if (node.isBucket()) {
+                    final boolean hybrid = node.isHybrid();
+                    final Set<Byte> firstBytes = new HashSet<>();
+                    final int used = node.bucketLength();
+                    int entry = 0;
+                    int count = 0;
+                    while (entry < used) {
+                        final int length = node.tailLength(entry);
+                        if (length < (hybrid ? 2 : 1) || length > Node.TAIL_LENGTH) {
+                            throw new AssertionError("invalid tail length " + length + ": " + node);
+                        }
+                        firstBytes.add(node.tailByte(entry, 0));
+                        entry += 1 + length;
+                        ++count;
                     }
-                    ++strings[0];
+                    if ((header != Header.BUCKET && header != Header.HYBRID) || count == 0 || entry != used
+                        || used > Node.BUCKET_BYTES || count > bucketStrings
+                        || (bucketStrings == 1 && (hybrid || used <= 1 + Node.STRING_LENGTH))) {
+                        throw new AssertionError("invalid bucket: " + node);
+                    }
+                    if (hybrid ? !firstBytes.equals(keys) : keys.size() > 1) {
+                        throw new AssertionError("bucket keys " + keys + ": " + node);
+                    }
+                    strings[0] += count;
                     return;
+                }
+                if (keys.size() > 1) {
+                    throw new AssertionError("shared node, keys " + keys + ": " + node);
                 }
                 final int count = Header.children(header);
                 if (count > Node.BLOCK_COUNT || Header.stringLength(header) > Node.STRING_LENGTH) {
@@ -279,6 +330,12 @@ public class RadixTreeFuzzTest {
                         ++strings[0];
                     } else if (node.child(i) == Node.EMPTY_BLOCK) {
                         throw new AssertionError("dangling key " + i + ": " + node);
+                    }
+                    if (node.child(i) != Node.EMPTY_BLOCK && !node.isOverflow(i)) {
+                        final Set<Byte> childKeys = parentKeys.computeIfAbsent(node.child(i), _ -> new HashSet<>());
+                        if (!childKeys.add(node.key(i))) {
+                            throw new AssertionError("duplicate key " + i + ": " + node);
+                        }
                     }
                 }
             });
@@ -301,30 +358,27 @@ public class RadixTreeFuzzTest {
 
     /**
      * Checks that forEach(prefix) visits distinct nodes holding exactly the strings starting with the
-     * prefix. The prefix itself is not visited when it is stored at a key of the parent node.
+     * prefix. The prefix itself is not visited when it is stored at a key of the parent node. A bucket where
+     * the prefix ends is visited alone and may hold other strings too.
      * @return error description or null
      */
     private static String checkForEach(final RadixTree tree, final Set<String> expected, final String prefix) {
         final byte[] bytes = bytes(prefix);
         final Set<Integer> visited = new HashSet<>();
-        final int[] strings = { 0 };
+        final int[] strings = { 0, 0 };
         tree.forEach(bytes.length, bytes, node -> {
             if (!visited.add(node.offset())) {
                 throw new AssertionError("forEach(" + prefix + ") visited node twice: " + node);
             }
-            final byte header = node.header();
-            if (Header.containsString(header)) {
-                ++strings[0];
-            }
-            for (int i = 0; i < Header.children(header); ++i) {
-                if (node.containsKey(i)) {
-                    ++strings[0];
-                }
+            strings[0] += node.stringCount();
+            if (node.isBucket() && visited.size() == 1) {
+                strings[1] = 1;
             }
         });
         final long all = expected.stream().filter(string -> string.startsWith(prefix)).count();
         final long longer = all - (expected.contains(prefix) ? 1 : 0);
-        if (strings[0] != all && strings[0] != longer) {
+        final boolean bucket = strings[1] == 1 && visited.size() == 1;
+        if (bucket ? strings[0] < longer || strings[0] > expected.size() : strings[0] != all && strings[0] != longer) {
             return "forEach(" + prefix + ") visited " + strings[0] + " strings, expected " + all;
         }
         return null;
@@ -339,8 +393,10 @@ public class RadixTreeFuzzTest {
     }
 
     private static void checkOperations(final String... operations) {
-        final String error = replay(Arrays.asList(operations));
-        assertNull(error, () -> Arrays.toString(operations) + ": " + error);
+        for (final int bucketStrings : BUCKET_STRINGS) {
+            final String error = replay(bucketStrings, Arrays.asList(operations));
+            assertNull(error, () -> "bucketStrings=" + bucketStrings + " " + Arrays.toString(operations) + ": " + error);
+        }
     }
 
     private static String randomString(final Random random, final char first, final int alphabet, final int maxLength) {

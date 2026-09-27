@@ -11,10 +11,11 @@ sourceSets {
 }
 dependencies {
     implementation project(':radix4j')
+    implementation project(':radix4j-clordid')
     compileOnly('org.openjdk.jmh:jmh-core:1.37')
     annotationProcessor('org.openjdk.jmh:jmh-generator-annprocess:1.37')
 }
 
 jmh {
-    includes = ['RadixTreeBenchmark']
+    includes = ['RadixTreeBenchmark|HashMapBenchmark']
 }

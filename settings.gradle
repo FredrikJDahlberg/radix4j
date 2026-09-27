@@ -1,4 +1,4 @@
 rootProject.name = 'radix4j'
 include 'radix4j'
+include 'radix4j-clordid'
 include 'radix4j-benchmarks'
-
