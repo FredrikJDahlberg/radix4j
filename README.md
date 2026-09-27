@@ -90,16 +90,90 @@ try (ClientOrderIdSet ids = new ClientOrderIdSet()) {
 }
 ```
 
-Ids that match their session's pattern, a trailing counter by default, are split into a prefix and a number,
-and the numbers are kept in run, array and bitmap containers, so counters cost well under 1 byte per id.
-Other ids, such as UUIDs, are packed into 7 bits per character and kept in a linear hash table per session,
-at about 31 bytes per UUID. Everything lives off-heap in fsmp4j pools and grows a block at a time. The set
-lives in memory only and is not thread-safe; whether a rejected order's id counts as used is up to the
-caller.
+Ids built from a counter are stored as numbers, at well under 1 byte per id, and other ids, such as UUIDs,
+are stored whole, at 33–44 bytes per id. Everything lives off-heap, and adds allocate no heap memory beyond
+pattern detection and the occasional page of a growing table. The set lives in memory only and is not
+thread-safe; whether a rejected order's id counts as used is up to the caller.
 
 [`ClientOrderIdSetExample`](radix4j-clordid/src/test/java/org/limitless/clordid/example/ClientOrderIdSetExample.java)
 is a complete example: a FIX gateway that gives each session a scope and a pattern, and checks the ClOrdID of every
 NewOrderSingle in place in the received bytes.
+
+### Trading days and sessions
+
+A set holds the ids of one trading day. An id stays used for the whole day, across reconnects, so there is
+no per-id removal: `rollover()` starts the next day by closing the day's off-heap memory, freeing every id at
+once. Sessions are numbered by the caller, and sessions on different trading calendars use separate sets.
+After a restart, the caller rebuilds the set by adding the day's ids again, in any order.
+
+### Patterns
+
+Each session has a `Pattern` that splits its ids into a prefix, a number and a suffix:
+
+| Pattern                   | Number                                                      | Example                                |
+|---------------------------|-------------------------------------------------------------|----------------------------------------|
+| `Pattern.decimal()`       | the trailing digits, up to 18                               | `ORD-000123`: `ORD-` and 000123        |
+| `Pattern.decimal(suffix)` | the digits before a suffix of 1–8 characters                | `ARB00045612X7Y`: `ARB`, 00045612 and `X7Y` |
+| `Pattern.base36(width)`   | the last 1–12 characters, in 0–9 and A–Z                    | `base36(7)`: `…XYZ` and `000A1Z9`      |
+| `Pattern.none()`          | none, ids are stored whole                                  | UUIDs, hashes                          |
+| `Pattern.auto()`          | detected from the session's first ids, the default          |                                        |
+
+With `auto()`, the session's first 32 ids of the day wait in a small buffer, and then the first pattern that
+fits them is chosen, trying decimal, decimal before a suffix of 1 to 8 characters, and base 36 from the widest
+to the narrowest. A pattern fits when at least 90% of the ids match it, at most one distinct prefix appears
+per 4 ids, and the numbers under a prefix have a median gap of at most 4,096. When none fits, the session gets
+`none()`. A pattern is fixed from the session's first id of the day until `rollover()`, so an id is always
+looked up where it was stored. A pattern set with `pattern(session, pattern)` must come before the session's
+first id and is kept across days; detected ones are detected again each day.
+
+### Storage
+
+An id that matches its session's pattern goes to the counter set. Its session, pattern, prefix and suffix
+map to a prefix id, and the number is split into chunks of 65,536 values, as in roaring bitmaps. Each prefix
+and chunk has one container, of the kind that holds its numbers in the smallest block:
+
+* run — a start and a length per run of consecutive numbers, 4 bytes per run
+* array — 2 bytes per number
+* bitmap — 8 KB, 1 bit per possible number
+* Elias–Fano — about L + 2 bits per number, with L = log2(65,536 / numbers), for numbers too far apart
+  for the others
+
+Containers live in off-heap blocks of 16 to 8,192 bytes and move to a larger block, or to another kind, as
+they grow. Any other id is packed into 7 bits per character and goes to the fallback set: a linear hash table
+per session, whose buckets are off-heap blocks of 32 to 1,024 bytes with a fingerprint byte and a length byte
+per id. The tables of both sets grow one bucket or page at a time and are never rehashed as a whole, so no add
+stops to copy the set.
+
+A counter is cheap only while its container holds many numbers. A session creating containers faster than
+one per 4 ids, beyond a first burst of 4,096 (such as the first order of each trader), is *demoted* until
+`rollover()`: its ids go to the counter set only when their container already exists, and to the fallback set
+otherwise. `demoted(session)` tells whether a session is demoted, and `statistics()` gives the number of ids
+in each set, the prefixes, the containers and the memory in use.
+
+### Memory and speed
+
+Measured with `MemoryComparison clordid` and `ClientOrderIdBenchmark` at 10 million ids of the data sets
+described under [Memory](#memory-1), each in one session, on the machine used for the other benchmarks.
+`MemoryComparison` detects the pattern, while `ClientOrderIdBenchmark` sets it and looks up the ids in random
+order, in the set and in a `RadixTree` holding the same ids.
+
+| Data set     | Pattern detected | ClientOrderIdSet | RadixTree     | HashSet&lt;String&gt; | `contains` ClientOrderIdSet | `contains` RadixTree |
+|--------------|------------------|-----------------:|--------------:|----------------------:|----------------------------:|---------------------:|
+| `sequential` | decimal          | 0.27 B/id        | 4.0 B/id      | 111 B/id              | 310 ns                      | 599 ns               |
+| `session`    | decimal          | 0.33 B/id        | 5.9 B/id      | 103 B/id              | 353 ns                      | 580 ns               |
+| `base36`     | base36(12)       | 0.27 B/id        | 7.4 B/id      | 105 B/id              | 323 ns                      | 648 ns               |
+| `order`      | decimal          | 0.56 B/id        | 5.9 B/id      | 95 B/id               | 292 ns                      | 635 ns               |
+| `sparse`     | decimal          | 1.9 B/id         | 8.6 B/id      | 95 B/id               | 378 ns                      | 668 ns               |
+| `random`     | none             | 44 B/id          | 48 B/id       | 111 B/id              | 448 ns                      | 741 ns               |
+| `base64`     | none             | 33 B/id          | 44 B/id       | 103 B/id              | 448 ns                      | 743 ns               |
+
+Counter ids cost 0.3 to 2 bytes each, 5 to 27 times less than in a `RadixTree` and 50 to 400 times less
+than in a `HashSet`. `sparse` costs the most: its numbers are too far apart for runs, so each container holds
+only about 256 of them. Ids stored whole cost somewhat less than in a `RadixTree`. Lookups are 1.6 to 2.2
+times faster than in a `RadixTree`: in random order both miss the cache, but the set reaches its container
+or bucket through one or two hash lookups, where the tree walks a path of nodes. A session must fit one pattern: six Nasdaq-style strategy formats mixed in
+one session are detected as base36(12) and cost 6.6 bytes per id, while a session per format gives each its
+own pattern.
 
 Algorithm
 ---------
