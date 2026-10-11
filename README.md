@@ -1,6 +1,10 @@
 Compact Radix Tree for Java
 ===========================
 
+<p align="center">
+  <img src="docs/images/radix4j-logo.jpg" alt="radix4j: off-heap compressed radix tree" width="640">
+</p>
+
 [![CI](https://github.com/FredrikJDahlberg/radix4j/actions/workflows/ci.yml/badge.svg)](https://github.com/FredrikJDahlberg/radix4j/actions/workflows/ci.yml)
 [![JitPack](https://jitpack.io/v/FredrikJDahlberg/radix4j.svg)](https://jitpack.io/#FredrikJDahlberg/radix4j)
 [![Java](https://img.shields.io/badge/Java-23-blue)](https://openjdk.org/projects/jdk/23/)
@@ -62,6 +66,10 @@ waste less memory in small trees, larger ones allow trees of up to 256 GiB.
 
 Client order ids
 ----------------
+
+<p align="center">
+  <img src="docs/images/clordid-logo.jpg" alt="radix4j ClientOrderIdSet" width="640">
+</p>
 
 The `radix4j-clordid` module holds `ClientOrderIdSet`, a duplicate check for FIX client order ids
 (ClOrdID, tag 11): an id must be unique within one trading day per session. Ids are 1 to 32 printable
